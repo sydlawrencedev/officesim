@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- The system audio tap needs this: it says why OfficeSim wants to hear what's playing. -->
+  <key>NSAudioCaptureUsageDescription</key>
+  <string>OfficeSim analyses the music your Mac is playing, so the office's DJ booth can react to it. The sound is analysed for the beat and the levels only: it is never recorded, saved or sent anywhere.</string>
+</dict>
+</plist>

@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "The office windows (main and the mini camera): core events, used for the agents-changed notifications, and full screen.",
+  "windows": [
+    "main",
+    "mini"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-set-fullscreen"
+  ]
+}

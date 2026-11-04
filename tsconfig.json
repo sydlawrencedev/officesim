@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2023", "DOM"],
+    "jsx": "react-jsx",
+    "resolveJsonModule": true,
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@paperclipai/plugin-sdk": ["/Users/sydlawrence/.paperclip/cli/current/node_modules/@paperclipai/plugin-sdk/dist/index.d.ts"],
+      "@paperclipai/plugin-sdk/ui": ["/Users/sydlawrence/.paperclip/cli/current/node_modules/@paperclipai/plugin-sdk/dist/ui/index.d.ts"]
+    }
+  },
+  "include": ["src"]
+}

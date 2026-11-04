@@ -1,0 +1,30 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "mac-ui",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--dir",
+        "mac",
+        "dev"
+      ],
+      "port": 1420
+    },
+    {
+      "name": "mac-release-ui",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--dir",
+        "mac",
+        "exec",
+        "vite",
+        "preview",
+        "--port",
+        "1430",
+        "--strictPort"
+      ],
+      "port": 1430
+    }
+  ]
+}

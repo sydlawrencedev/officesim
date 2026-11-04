@@ -1,0 +1,28 @@
+{
+  "name": "@officesim/mac",
+  "version": "0.1.0",
+  "description": "OfficeSim for Mac: a pixel office of the AI agents running on this machine",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "tauri": "tauri",
+    "release": "scripts/release.sh"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "@types/node": "^24.6.0",
+    "@types/react": "^19.0.8",
+    "@types/react-dom": "^19.0.3",
+    "@vitejs/plugin-react": "^5",
+    "typescript": "^5.7.3",
+    "vite": "^7"
+  }
+}

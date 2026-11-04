@@ -1,0 +1,13 @@
+{
+  "id": "KANBAN_BOARD",
+  "name": "Kanban Board",
+  "category": "wall",
+  "type": "asset",
+  "canPlaceOnWalls": true,
+  "canPlaceOnSurfaces": false,
+  "backgroundTiles": 0,
+  "width": 64,
+  "height": 32,
+  "footprintW": 4,
+  "footprintH": 2
+}

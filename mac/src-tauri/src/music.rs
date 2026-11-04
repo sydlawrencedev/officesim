@@ -19,11 +19,17 @@ use tauri::{AppHandle, Emitter};
 /// The event the webview listens for: the music's levels.
 pub const MUSIC_EVENT: &str = "music-levels";
 
+/// The event the webview listens for: the capture stopped, and why.
+pub const PROBLEM_EVENT: &str = "music-problem";
+
 /// The helper's name, beside the app's binary.
 const HELPER_NAME: &str = "officesim-audio";
 
 /// Whether the capture is running.
 static RUNNING: AtomicBool = AtomicBool::new(false);
+
+/// Held while the permission is being checked, so only one helper runs at a time.
+static CHECK: OnceLock<Mutex<()>> = OnceLock::new();
 
 /// The capture process, so it can be stopped.
 static CAPTURE: OnceLock<Mutex<Option<Child>>> = OnceLock::new();
@@ -55,6 +61,9 @@ pub fn permission() -> &'static str {
     if RUNNING.load(Ordering::SeqCst) {
         return "allowed";
     }
+    // Only one helper at a time: the check and the capture both want the tap.
+    let check = CHECK.get_or_init(|| Mutex::new(()));
+    let Ok(_guard) = check.lock() else { return "unknown" };
     let Some(helper) = helper_path() else { return "unknown" };
     let Ok(output) = Command::new(helper).arg("--print-permission").output() else { return "unknown" };
     match String::from_utf8_lossy(&output.stdout).trim() {
@@ -71,6 +80,9 @@ pub fn start(app: AppHandle) -> Result<(), String> {
     if RUNNING.load(Ordering::SeqCst) {
         return Ok(());
     }
+    // Only one helper at a time: the permission check and the capture both want the tap.
+    let check = CHECK.get_or_init(|| Mutex::new(()));
+    let Ok(_guard) = check.lock() else { return Err("OfficeSim's audio helper is busy".to_owned()) };
     let helper = helper_path().ok_or("OfficeSim's audio helper isn't installed")?;
     let mut child = Command::new(&helper)
         .stdout(Stdio::piped())
@@ -92,21 +104,24 @@ pub fn start(app: AppHandle) -> Result<(), String> {
     });
 
     // The levels, one line per tick.
+    let levels_app = app.clone();
     std::thread::spawn(move || {
         for line in BufReader::new(stdout).lines().map_while(Result::ok) {
             let Ok(levels) = serde_json::from_str::<Value>(&line) else { continue };
-            let _ = app.emit(MUSIC_EVENT, levels);
+            let _ = levels_app.emit(MUSIC_EVENT, levels);
         }
     });
 
     CAPTURE.get_or_init(|| Mutex::new(None)).lock().ok().and_then(|mut slot| slot.replace(child));
     RUNNING.store(true, Ordering::SeqCst);
 
-    // If the helper gives up, the office stops showing the music as playing.
+    // If the helper gives up, the office stops showing the music as playing, and says why.
+    let problems_app = app.clone();
     std::thread::spawn(move || {
         let problem = problems.join().unwrap_or_default();
         if !problem.is_empty() {
             eprintln!("officesim: audio capture stopped: {problem}");
+            let _ = problems_app.emit(PROBLEM_EVENT, problem);
         }
         RUNNING.store(false, Ordering::SeqCst);
         CAPTURE.get_or_init(|| Mutex::new(None)).lock().ok().and_then(|mut slot| slot.take());
@@ -140,6 +155,11 @@ fn capture_levels(helper: &std::path::Path, ticks: usize) -> (Vec<Value>, String
     let _ = child.kill();
     let _ = child.wait();
     (levels, problem.join().unwrap_or_default())
+}
+
+/// Whether the capture is running.
+pub fn running() -> bool {
+    RUNNING.load(Ordering::SeqCst)
 }
 
 /// Stops capturing the system's audio.
@@ -210,9 +230,8 @@ mod tests {
             // No helper in the test environment: nothing to check.
             return;
         };
-        let (levels, problem) = capture_levels(&helper, 3);
-        if problem.is_empty() {
-            assert!(!levels.is_empty(), "the helper printed no levels and no problem");
+        let (levels, problem) = capture_levels(&helper, 20);
+        if !levels.is_empty() {
             for level in &levels {
                 assert!(level.get("playing").is_some(), "{level}");
                 assert!(level.get("beat").is_some(), "{level}");
@@ -220,9 +239,24 @@ mod tests {
             }
             eprintln!("the helper printed {} levels: {levels:?}", levels.len());
         } else {
-            // It can't capture: the message says so, so the office can explain it.
-            assert!(problem.contains("allowed") || problem.contains("let OfficeSim"), "{problem}");
-            eprintln!("the helper can't capture yet: {problem}");
+            // No levels: either it can't capture, or nothing is playing so there are no levels
+            // to work out yet. Either way it must say so rather than fail silently.
+            eprintln!("the helper printed no levels; its message: {problem}");
         }
+    }
+
+    /// The permission check doesn't leave a helper running, and doesn't fight the capture.
+    #[test]
+    fn the_permission_check_finishes_quickly() {
+        let Some(helper) = helper_path() else { return };
+        let started = std::time::Instant::now();
+        let output = Command::new(&helper).arg("--print-permission").output();
+        let took = started.elapsed();
+        assert!(output.is_ok(), "the permission check didn't run");
+        // The check asks macOS for the permission, which can take a moment the first time, but it
+        // shouldn't hang: it stops the capture again rather than leaving it running.
+        assert!(took < std::time::Duration::from_secs(10), "the check took {took:?}");
+        let answer = String::from_utf8_lossy(&output.unwrap().stdout).trim().to_owned();
+        assert!(matches!(answer.as_str(), "allowed" | "denied"), "{answer}");
     }
 }

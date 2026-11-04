@@ -9,7 +9,8 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "tauri": "tauri",
-    "release": "scripts/release.sh"
+    "release": "scripts/release.sh",
+    "test:audio": "scripts/test-audio.sh"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

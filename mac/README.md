@@ -67,6 +67,23 @@ the app it runs in. In Terminal or iTerm2 its exact tab comes forward (macOS ask
 OfficeSim control them); in any other app (Claude, Ghostty, VS Code...) the app comes forward.
 Issue links open in Paperclip.
 
+## The DJ booth
+
+The games room's DJ booth plays along to your music: the records spin, the mixer's meters bounce,
+the speaker cones pump with the bass, and the room lights up with lasers and a disco ball.
+
+A web page can't hear what else the computer is playing, so the Mac app does it natively. The
+`officesim-audio` helper (src-tauri/sources/audio-capture.swift) taps the system's audio output
+with Core Audio and works out the beat and the levels; the app passes them to the office. The
+sound is analysed for the beat and the levels only: it is never recorded, saved or sent anywhere.
+
+The tap needs the **System Audio Recording** permission, which macOS asks for the first time you
+use the booth. If you decline it, turn OfficeSim on in System Settings → Privacy & Security →
+Screen & System Audio Recording, then try again.
+
+Turn it on and off by clicking the DJ booth, pressing **M**, or from the menu bar (OfficeSim's
+icon → "Play along to the music").
+
 ## The Mac app
 
 - A menu bar icon shows how many agents are working (and waiting on you), lists those waiting
@@ -105,6 +122,7 @@ pnpm install
 pnpm tauri dev      # the app, with the Rust backend
 pnpm dev            # just the UI in a browser at http://localhost:1420, with mock agents
 pnpm typecheck      # also checks ../src/ui against the shim
+pnpm test:audio     # the levels the audio capture works out
 cargo test --manifest-path src-tauri/Cargo.toml
 ```
 

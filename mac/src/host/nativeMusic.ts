@@ -21,9 +21,11 @@ export type NativeMusicStatus =
   | { state: "error"; message: string };
 
 const MUSIC_EVENT = "music-levels";
+const PROBLEM_EVENT = "music-problem";
 
 let status: NativeMusicStatus = { state: "off" };
 let unlisten: (() => void) | null = null;
+let unlistenProblem: (() => void) | null = null;
 
 /** Sets the status and tells whoever is watching. */
 export function setNativeMusicStatus(next: NativeMusicStatus): void {
@@ -52,25 +54,35 @@ export async function startNativeMusic(): Promise<void> {
       const hearing = !!levels.playing;
       if (status.state === "on" && status.hearing !== hearing) setNativeMusicStatus({ state: "on", hearing });
     });
+    // And the reason, if the capture can't go on
+    unlistenProblem = await listen<string>(PROBLEM_EVENT, (event) => {
+      setNativeMusicStatus({ state: "error", message: explain(event.payload) });
+    });
     await invoke("start_music");
     setNativeMusicStatus({ state: "on", hearing: false });
   } catch (error) {
     unlisten?.();
     unlisten = null;
-    const message = error instanceof Error ? error.message : String(error);
-    setNativeMusicStatus({
-      state: "error",
-      message: message.includes("hasn't allowed")
-        ? "macOS hasn't let OfficeSim hear your music yet. Turn on OfficeSim in System Settings → Privacy & Security → Screen & System Audio Recording, then try again."
-        : message,
-    });
+    unlistenProblem?.();
+    unlistenProblem = null;
+    setNativeMusicStatus({ state: "error", message: explain(error instanceof Error ? error.message : String(error)) });
   }
+}
+
+/** What to tell the viewer, when macOS won't let the app hear the system. */
+function explain(problem: string): string {
+  if (problem.includes("hasn't allowed")) {
+    return "macOS hasn't let OfficeSim hear your music yet. Turn on OfficeSim in System Settings → Privacy & Security → Screen & System Audio Recording, then click the DJ booth again.";
+  }
+  return problem;
 }
 
 /** Stops listening. */
 export async function stopNativeMusic(): Promise<void> {
   unlisten?.();
   unlisten = null;
+  unlistenProblem?.();
+  unlistenProblem = null;
   try {
     await invoke("stop_music");
   } catch {

@@ -215,23 +215,6 @@ export function harnessIcon(source: string | null | undefined): HarnessIcon | nu
 export function useHostMusic(): HostMusic {
   const [status, setStatus] = useState<NativeMusicStatus>({ state: "off" });
 
-  useEffect(() => {
-    // Whether macOS has allowed the capture. It's only asked while the capture isn't running:
-    // the check and the capture both want the tap, and they'd fight over it.
-    let cancelled = false;
-    const poll = window.setInterval(() => {
-      if (status.state === "on" || status.state === "connecting") return;
-      void musicPermission().then((permission) => {
-        if (cancelled) return;
-        if (permission === "denied") setStatus({ state: "error", message: PERMISSION_MESSAGE });
-      });
-    }, 5_000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(poll);
-    };
-  }, [status.state]);
-
   return {
     status: status.state === "error" ? { state: "error", message: status.message } : status,
     toggle: () => {
@@ -240,9 +223,9 @@ export function useHostMusic(): HostMusic {
         return;
       }
       setStatus({ state: "connecting" });
-      void startNativeMusic().then(() => {
-        setStatus(nativeMusicStatus());
-      });
+      // The capture is started straight away: it asks macOS for the permission itself, and its
+      // own answer says if it wasn't allowed.
+      void startNativeMusic().then(() => setStatus(nativeMusicStatus()));
     },
   };
 }

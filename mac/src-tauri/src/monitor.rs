@@ -120,6 +120,8 @@ fn build_menu(app: &AppHandle, total: usize, working: usize, waiting: &[&Agent])
     let open = MenuItem::with_id(app, "open", "Open OfficeSim", true, None::<&str>)?;
     let mini_open = app.get_webview_window(MINI_LABEL).is_some();
     let mini = CheckMenuItem::with_id(app, "mini", "Mini camera", true, mini_open, None::<&str>)?;
+    // The DJ booth plays along to whatever the Mac is playing
+    let music = CheckMenuItem::with_id(app, "music", "Play along to the music", true, crate::music::running(), None::<&str>)?;
     let notify = CheckMenuItem::with_id(app, "notify", "Notify when an agent needs you", true, settings::notify_waiting(), None::<&str>)?;
     let login = CheckMenuItem::with_id(app, "login", "Launch at login", true, launch_at_login(app), None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit OfficeSim", true, None::<&str>)?;
@@ -127,7 +129,7 @@ fn build_menu(app: &AppHandle, total: usize, working: usize, waiting: &[&Agent])
     let (separator_1, separator_2, separator_3) = (separator()?, separator()?, separator()?);
     let mut items: Vec<&dyn IsMenuItem<Wry>> = vec![&summary];
     items.extend(waiting_items.iter().map(|item| item as &dyn IsMenuItem<Wry>));
-    items.extend([&separator_1 as &dyn IsMenuItem<Wry>, &open, &mini, &separator_2, &notify, &login, &separator_3, &quit]);
+    items.extend([&separator_1 as &dyn IsMenuItem<Wry>, &open, &mini, &separator_2, &music, &notify, &login, &separator_3, &quit]);
     Menu::with_items(app, &items)
 }
 
@@ -142,6 +144,7 @@ fn on_menu(app: &AppHandle, id: &str) {
     match id {
         "open" => show_main(app),
         "mini" => toggle_mini(app),
+        "music" => toggle_music(app),
         "notify" => {
             let _ = settings::set_notify_waiting(!settings::notify_waiting());
         }
@@ -183,6 +186,15 @@ pub fn toggle_mini(app: &AppHandle) {
         .build();
     if let Err(error) = built {
         eprintln!("officesim: can't open the mini camera: {error}");
+    }
+}
+
+/// Starts or stops the DJ booth playing along to the music, and tells the office about it.
+fn toggle_music(app: &AppHandle) {
+    if crate::music::running() {
+        crate::music::stop();
+    } else if let Err(error) = crate::music::start(app.clone()) {
+        eprintln!("officesim: can't listen to the music: {error}");
     }
 }
 

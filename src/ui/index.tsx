@@ -598,9 +598,11 @@ export function OfficeSimCameraPage() {
   /** The agent whose character and room are being changed (from their avatar on the Agents tab) */
   const [editingAgent, setEditingAgent] = useState<{ id: string; name: string } | null>(null);
   useEffect(() => {
-    if (!editingAgent) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setEditingAgent(null);
+      if (event.key === "Escape") {
+        setEditingAgent(null);
+        return;
+      }
       // M starts and stops the music the DJ booth plays along to
       if (event.key === "m" && !event.metaKey && !event.ctrlKey && !event.altKey && !editingAgent) {
         const target = event.target as HTMLElement | null;

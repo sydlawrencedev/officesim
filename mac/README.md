@@ -111,6 +111,8 @@ Paperclip plugin's own board shows that company's issues instead.
 
 **+ New issue** opens a form that adds an issue to any of the repos, on GitHub.
 
+**Refresh** reads GitHub again straight away, rather than waiting for the two-minute sync.
+
 ## The Activity tab
 
 Two lists, each newest first, each entry saying which repo it came from. A coloured rule under

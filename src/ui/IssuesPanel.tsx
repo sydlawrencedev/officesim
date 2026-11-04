@@ -10,6 +10,7 @@ import {
   type IssuesBoard,
 } from "../issuesBoard.js";
 import { timeAgo } from "./PixelOfficeCanvas.js";
+import { useHostRefresh } from "./hostExtensions.js";
 
 /*
  * The Issues tab: every open issue across the repos the office knows about, as a kanban board.
@@ -41,8 +42,11 @@ export function IssuesPanel({
   const [filter, setFilter] = useState("");
   const [grouping, setGrouping] = useState<Grouping>("column");
   const [repo, setRepo] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const refreshRef = useRef(refresh);
   refreshRef.current = refresh;
+  // The host can read its data again now, if it has any to refresh
+  const hostRefresh = useHostRefresh();
 
   useEffect(() => {
     if (!active) return;
@@ -51,6 +55,18 @@ export function IssuesPanel({
     }, BOARD_REFRESH_MS);
     return () => window.clearInterval(timer);
   }, [active]);
+
+  /** Read GitHub again now, rather than waiting for the two-minute sync. */
+  async function refreshNow() {
+    if (!hostRefresh || refreshing) return;
+    setRefreshing(true);
+    try {
+      await hostRefresh.refresh();
+      refresh();
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   const filtered = useMemo(() => {
     const needle = filter.trim().toLowerCase();
@@ -107,6 +123,19 @@ export function IssuesPanel({
             By repo
           </button>
         </div>
+        {/* Read GitHub again now, rather than waiting for the two-minute sync */}
+        {hostRefresh?.canRefresh ? (
+          <button
+            type="button"
+            className="op-button op-issues-refresh"
+            onClick={refreshNow}
+            disabled={refreshing}
+            title="Read GitHub again now"
+            aria-label="Refresh the issues"
+          >
+            <span aria-hidden="true">{refreshing ? "↻" : "⟳"}</span> {refreshing ? "Refreshing…" : "Refresh"}
+          </button>
+        ) : null}
         <span className="op-log-count">
           {data ? `${total}${total !== all ? ` of ${all}` : ""} open` : ""}
         </span>

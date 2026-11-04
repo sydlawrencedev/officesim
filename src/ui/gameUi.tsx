@@ -274,6 +274,9 @@ button.op-log-row:focus-visible { outline: 1px dotted var(--op-field-ink); outli
 }
 .op-issues-repo[aria-pressed="true"] { color: #f4f1e4; background: rgba(245,213,71,0.16); border-color: #f5d547; }
 .op-issues-repo-count { color: #9fb3c6; font-variant-numeric: tabular-nums; }
+/* The refresh button: reading GitHub again now, rather than waiting for the two-minute sync */
+.op-issues-refresh { flex-shrink: 0; white-space: nowrap; }
+.op-issues-refresh[data-busy] { opacity: 0.7; }
 .op-issues-problems { padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,0.08); }
 .op-issues-problem { color: #ff8a80; font-size: 11px; }
 .op-issues-body { flex: 1; min-height: 0; overflow-y: auto; }

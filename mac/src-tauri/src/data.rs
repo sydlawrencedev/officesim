@@ -168,6 +168,14 @@ mod tests {
         }
     }
 
+    /// `cargo test -- --ignored --nocapture` reads GitHub again now.
+    #[test]
+    #[ignore]
+    fn prints_the_refresh() {
+        let result = act("refresh-github", &json!({})).unwrap();
+        println!("refresh: {result}");
+    }
+
     /// `cargo test -- --ignored --nocapture` prints the toolbar's Done count.
     #[test]
     #[ignore]

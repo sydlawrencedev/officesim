@@ -1,6 +1,6 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import type { HarnessIcon, HostFullscreen, HostIssueRepos, HostMusic } from "../../../src/ui/hostExtensions";
+import type { HarnessIcon, HostFullscreen, HostIssueRepos, HostMusic, HostRefresh } from "../../../src/ui/hostExtensions";
 import type { IssuesBoard } from "../../../src/issuesBoard";
 import { iconFor } from "./harnessIcons";
 import { musicPermission, nativeMusicStatus, startNativeMusic, stopNativeMusic, type NativeMusicStatus } from "./nativeMusic";
@@ -248,6 +248,22 @@ export function useHostIssueRepos(): HostIssueRepos {
     open: entry.open,
   }));
   return { repos, canCreate: repos.length > 0 };
+}
+
+/**
+ * Reading GitHub again now.
+ *
+ * What the app reads is kept for a couple of minutes, so a refresh asks the backend to forget
+ * that first — otherwise it would just hand back the same answer.
+ */
+export function useHostRefresh(): HostRefresh {
+  const refreshGithub = usePluginAction("refresh-github");
+  return {
+    canRefresh: true,
+    refresh: async () => {
+      await refreshGithub({});
+    },
+  };
 }
 
 /** The app window is the OfficeSim window, so it fills it. */

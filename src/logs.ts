@@ -45,3 +45,28 @@ export type GitLog =
   | { state: "unconfigured" }
   | { state: "error"; repoPath: string; message: string }
   | { state: "ok"; repoPath: string; branch: string | null; changes: GitChanges; commits: GitCommit[] };
+
+/** One repo the office knows about, and what it has been doing. */
+export type RepoActivity = {
+  /** The folder it lives in. */
+  repoPath: string;
+  /** Its name, as the Activity tab shows it. */
+  name: string;
+  branch: string | null;
+  changes: GitChanges;
+  /** Its latest commits, newest first. */
+  commits: GitCommit[];
+  /** Why it couldn't be read, if it couldn't. */
+  problem: string | null;
+};
+
+/**
+ * The git activity of every repo the agents work in, newest commit first.
+ *
+ * The office used to show one repo (the company's own, from the plugin settings). It now shows
+ * all of them, so the work across the agents' repos is visible in one place.
+ */
+export type GitActivity = {
+  state: "unconfigured" | "ok";
+  repos: RepoActivity[];
+};

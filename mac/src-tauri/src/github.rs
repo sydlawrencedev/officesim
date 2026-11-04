@@ -30,6 +30,12 @@ pub struct Issue {
     pub labels: Vec<String>,
     /// Who it's assigned to, by their GitHub login.
     pub assignee: Option<String>,
+    /// How many comments it has.
+    pub comments: u64,
+    /// When it was opened, in milliseconds since the epoch.
+    pub created_at: Option<i64>,
+    /// When it was last touched, in milliseconds since the epoch.
+    pub updated_at: Option<i64>,
 }
 
 /// The issues of one repo, and when they were read.
@@ -105,7 +111,7 @@ pub fn issues(repo: &str) -> Result<Vec<Issue>, String> {
         "--state",
         "open",
         "--json",
-        "number,title,labels,assignees",
+        "number,title,labels,assignees,comments,createdAt,updatedAt",
     ])?;
     let parsed: Vec<Value> = serde_json::from_str(&output).map_err(|error| format!("Can't read GitHub's answer: {error}"))?;
     let issues: Vec<Issue> = parsed
@@ -130,7 +136,15 @@ pub fn issues(repo: &str) -> Result<Vec<Issue>, String> {
                 .and_then(|assignees| assignees.first())
                 .and_then(|assignee| assignee.get("login").and_then(Value::as_str))
                 .map(str::to_owned);
-            Some(Issue { number, repo: repo.to_owned(), title, labels, assignee })
+            // The comments come as a list, so the count is how many there are
+            let comments = issue
+                .get("comments")
+                .and_then(Value::as_array)
+                .map(|comments| comments.len() as u64)
+                .unwrap_or(0);
+            let created_at = issue.get("createdAt").and_then(Value::as_str).and_then(crate::time::millis_from_iso);
+            let updated_at = issue.get("updatedAt").and_then(Value::as_str).and_then(crate::time::millis_from_iso);
+            Some(Issue { number, repo: repo.to_owned(), title, labels, assignee, comments, created_at, updated_at })
         })
         .collect();
     remember(repo, issues.clone());
@@ -198,6 +212,29 @@ pub fn to_board_issue(issue: &Issue) -> Value {
         // Where the issue is, for a click to open it on GitHub.
         "url": issue_url(issue),
     })
+}
+
+/// The issue as the Issues tab shows it: everything known about it.
+pub fn to_board_entry(issue: &Issue) -> Value {
+    json!({
+        "id": format!("github:{}#{}", issue.repo, issue.number),
+        "identifier": format!("{}#{}", issue.repo, issue.number),
+        "title": issue.title,
+        "status": status_for(&issue.labels),
+        "priority": priority_for(&issue.labels),
+        "repo": issue.repo,
+        "labels": issue.labels,
+        "assignee": issue.assignee,
+        "comments": issue.comments,
+        "createdAt": issue.created_at.map(crate::time::iso_from_millis),
+        "updatedAt": issue.updated_at.map(crate::time::iso_from_millis),
+        "url": issue_url(issue),
+    })
+}
+
+/// The column an issue belongs to, from its labels.
+fn status_for(labels: &[String]) -> &'static str {
+    crate::tasks::status_for_labels(labels)
 }
 
 /// Runs `gh` with these arguments and returns its output.
@@ -298,11 +335,21 @@ mod tests {
             title: "Fix it".to_owned(),
             labels: vec!["in progress".to_owned()],
             assignee: Some("someone".to_owned()),
+            comments: 3,
+            created_at: Some(1_790_848_844_503),
+            updated_at: Some(1_790_848_844_503),
         };
         let board = to_board_issue(&issue);
         assert_eq!(board["identifier"], "owner/repo#42");
         assert_eq!(board["priority"], "low");
         assert_eq!(board["assignedToUser"], true);
         assert_eq!(board["url"], "https://github.com/owner/repo/issues/42");
+
+        // The Issues tab's own shape: everything known about it
+        let entry = to_board_entry(&issue);
+        assert_eq!(entry["repo"], "owner/repo");
+        assert_eq!(entry["comments"], 3);
+        assert_eq!(entry["status"], "in_progress");
+        assert_eq!(entry["labels"][0], "in progress");
     }
 }

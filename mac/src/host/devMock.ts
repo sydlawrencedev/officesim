@@ -93,12 +93,16 @@ export function emptyData(key: string, params: Record<string, unknown>): unknown
       return { scorecard: null };
     case "kanban-board":
       return { columns: ["backlog", "todo", "in_progress", "in_review", "blocked"].map((status) => ({ status, issues: [] })) };
+    case "issues-board":
+      return { columns: ["backlog", "todo", "in_progress", "in_review", "blocked"].map((status) => ({ status, issues: [] })), repos: [], problems: [] };
     case "issues-done":
       return { windows: new Array(12).fill(0), endsAt: new Date().toISOString(), total: 0, recent: [] };
     case "done-tasks":
       return { tasks: [] };
     case "git-log":
       return { state: "unconfigured" };
+    case "git-activity":
+      return { state: "unconfigured", repos: [] };
     case "wall-charts":
       return { charts: {} };
     case "logins":

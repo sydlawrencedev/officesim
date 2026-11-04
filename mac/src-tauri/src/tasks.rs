@@ -12,8 +12,23 @@ use serde::Serialize;
 use serde_json::{json, Value};
 use std::path::PathBuf;
 
-/// Open-work columns on the boardroom kanban, in board order (src/worker.ts KANBAN_STATUSES).
+/// The board's columns, in board order.
 pub const KANBAN_STATUSES: [&str; 5] = ["backlog", "todo", "in_progress", "in_review", "blocked"];
+
+/// The board's column for a set of labels: the first one that names a stage.
+pub fn status_for_labels(labels: &[String]) -> &'static str {
+    for label in labels {
+        match label.trim().to_lowercase().as_str() {
+            "backlog" | "icebox" | "later" | "someday" => return "backlog",
+            "in progress" | "in-progress" | "in_progress" | "doing" | "wip" | "started" => return "in_progress",
+            "in review" | "in-review" | "in_review" | "review" | "needs review" | "needs-review" => return "in_review",
+            "blocked" | "blocker" | "waiting" | "on hold" | "on-hold" => return "blocked",
+            "todo" | "to do" | "to-do" | "ready" | "open" | "next" => return "todo",
+            _ => {}
+        }
+    }
+    "todo"
+}
 /// The done timeline: this many windows of this many minutes (src/issuesDone.ts).
 pub const DONE_TIMELINE_WINDOWS: usize = 12;
 const DONE_TIMELINE_WINDOW_MINUTES: i32 = 10;

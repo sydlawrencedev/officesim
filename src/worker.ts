@@ -2,7 +2,8 @@ import { definePlugin, runWorker } from "@paperclipai/plugin-sdk";
 import { PLUGIN_ID } from "./manifest.js";
 import { DONE_TIMELINE_WINDOW_MINUTES, DONE_TIMELINE_WINDOWS, type IssuesDone } from "./issuesDone.js";
 import { readGitLog } from "./gitLog.js";
-import type { DoneTasksLog, GitLog } from "./logs.js";
+import type { DoneTasksLog, GitActivity, GitLog } from "./logs.js";
+import type { BoardIssue, IssuesBoard } from "./issuesBoard.js";
 import { findLogins, loginPageviewsQuery, type Logins } from "./logins.js";
 import {
   isHttpUrl,
@@ -147,6 +148,25 @@ export type KanbanBoard = {
   /** One entry per KANBAN_STATUSES column: its open issues, most urgent first. */
   columns: Array<{ status: (typeof KANBAN_STATUSES)[number]; issues: KanbanIssue[] }>;
 };
+
+/** The Issues tab: every open issue across the company's repos, as a board. */
+const ISSUES_BOARD_SQL = `
+  SELECT i.id, i.identifier, i.title, i.status, i.priority, i.created_at, i.updated_at,
+         coalesce(assignee.name, CASE WHEN i.assignee_user_id IS NOT NULL THEN 'A person' END) AS assignee,
+         (SELECT count(*) FROM public.issue_comments c WHERE c.issue_id = i.id AND c.deleted_at IS NULL)::int8 AS comments,
+         c.name AS company
+  FROM public.issues i
+  JOIN public.companies c ON c.id = i.company_id AND c.status = 'active'
+  LEFT JOIN public.agents assignee ON assignee.id = i.assignee_agent_id
+  WHERE i.hidden_at IS NULL AND i.status IN (${KANBAN_STATUSES.map((status) => `'${status}'`).join(", ")})
+  ORDER BY CASE i.priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END, i.created_at
+`;
+
+/** The Issues tab's board, for the plugin: every active company's issues. */
+export type { IssuesBoard } from "./issuesBoard.js";
+
+/** One issue on the Issues tab. */
+export type { BoardIssue } from "./issuesBoard.js";
 
 // The status list is inlined: the plugin db client expands array params into a row, not an array.
 /** Time frames the stats panel offers, in hours. */
@@ -1018,6 +1038,74 @@ const plugin = definePlugin({
       const repoPath = (await loadSettings(companyId)).settings.gitRepoPath;
       if (!repoPath) return { state: "unconfigured" };
       return readGitLog(repoPath);
+    });
+
+    // The Issues tab: every open issue across the active companies, as a board
+    ctx.data.register("issues-board", async (): Promise<IssuesBoard> => {
+      const columns = KANBAN_STATUSES.map((status) => ({ status, issues: [] as BoardIssue[] }));
+      const repos = new Map<string, number>();
+      try {
+        const rows = (await ctx.db.query(ISSUES_BOARD_SQL, [])) as Array<{
+          id: string;
+          identifier: string | null;
+          title: string;
+          status: string;
+          priority: string;
+          created_at: string | Date | null;
+          updated_at: string | Date | null;
+          assignee: string | null;
+          comments: number;
+          company: string;
+        }>;
+        for (const row of rows) {
+          const repo = row.company;
+          repos.set(repo, (repos.get(repo) ?? 0) + 1);
+          const issue: BoardIssue = {
+            id: row.id,
+            identifier: row.identifier,
+            title: row.title,
+            status: row.status,
+            priority: row.priority,
+            repo,
+            labels: [],
+            assignee: row.assignee,
+            comments: Number(row.comments ?? 0),
+            createdAt: toIso(row.created_at),
+            updatedAt: toIso(row.updated_at),
+            url: null,
+          };
+          columns.find((column) => column.status === row.status)?.issues.push(issue);
+        }
+      } catch (error) {
+        ctx.logger.warn("Could not load the issues board", { error: error instanceof Error ? error.message : String(error) });
+      }
+      return {
+        columns,
+        repos: [...repos.entries()].map(([repo, open]) => ({ repo, open })).sort((a, b) => b.open - a.open),
+        problems: [],
+      };
+    });
+
+    // The Activity tab's git: every repo the company's agents work in
+    ctx.data.register("git-activity", async (params): Promise<GitActivity> => {
+      const companyId = typeof params.companyId === "string" ? params.companyId : undefined;
+      const repoPath = (await loadSettings(companyId)).settings.gitRepoPath;
+      if (!repoPath) return { state: "unconfigured", repos: [] };
+      const log = await readGitLog(repoPath);
+      if (log.state !== "ok") return { state: "unconfigured", repos: [] };
+      return {
+        state: "ok",
+        repos: [
+          {
+            repoPath: log.repoPath,
+            name: log.repoPath.split("/").filter(Boolean).pop() ?? log.repoPath,
+            branch: log.branch,
+            changes: log.changes,
+            commits: log.commits,
+            problem: null,
+          },
+        ],
+      };
     });
 
     const wallChartCache = new Map<string, { chart: WhiteboardChart; expiresAt: number }>();

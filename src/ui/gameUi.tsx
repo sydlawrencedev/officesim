@@ -177,6 +177,8 @@ const CSS = `
 .op-log-filter:focus { outline: 1px dotted var(--op-field-ink); outline-offset: 1px; }
 .op-log-count { font-size: 12px; color: #9fb3c6; white-space: nowrap; }
 .op-log-repo { display: flex; align-items: baseline; gap: 10px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.op-log-repo-section { border-bottom: 1px solid rgba(255,255,255,0.08); }
+.op-log-repo-section .op-log-section { display: flex; align-items: baseline; gap: 10px; }
 .op-log-branch { font-weight: 400; font-size: 12px; color: #6ee36e; }
 .op-log-body { max-height: min(600px, calc(100vh - 300px)); min-height: 220px; overflow-y: auto; }
 .op-log-section {
@@ -237,9 +239,96 @@ button.op-log-row:focus-visible { outline: 1px dotted var(--op-field-ink); outli
 .op-log-lines { flex-shrink: 0; min-width: 90px; text-align: right; font-variant-numeric: tabular-nums; }
 .op-log-add { color: #6ee36e; }
 .op-log-del { color: #e5484d; }
+
+/* The Issues tab: every open issue, as a board */
+.op-issues { display: flex; flex-direction: column; min-height: 0; }
+.op-issues-repos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.op-issues-repo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  font: inherit;
+  font-size: 11px;
+  color: #c7d3df;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.op-issues-repo[aria-pressed="true"] { color: #f4f1e4; background: rgba(245,213,71,0.16); border-color: #f5d547; }
+.op-issues-repo-count { color: #9fb3c6; font-variant-numeric: tabular-nums; }
+.op-issues-problems { padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+.op-issues-problem { color: #ff8a80; font-size: 11px; }
+.op-issues-body { overflow-y: auto; max-height: min(620px, calc(100vh - 300px)); }
+/* The columns are wide enough for their cards to sit side by side, and the board scrolls across */
+.op-issues-columns { display: grid; grid-template-columns: repeat(5, minmax(260px, 1fr)); gap: 8px; padding: 8px; align-items: start; }
+.op-issues-column { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.op-issues-column-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+  padding: 4px 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #f4f1e4;
+  background: var(--op-field);
+  border-top: 3px solid #9aa0a6;
+}
+/* The cards sit side by side within a column, as many as fit */
+.op-issues-cards { display: grid; gap: 6px; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); align-items: start; }
+.op-issues-empty { padding: 6px; text-align: center; opacity: 0.4; }
+.op-issues-card {
+  display: grid;
+  gap: 3px;
+  padding: 6px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: inherit;
+  text-align: left;
+  background: var(--op-field);
+  border: 1px solid;
+  border-color: var(--op-lo) var(--op-hi) var(--op-hi) var(--op-lo);
+}
+.op-issues-card-top { display: flex; align-items: baseline; gap: 5px; min-width: 0; }
+.op-issues-repo-name { margin-left: auto; color: #7d8fa3; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.op-issues-card-title {
+  font-weight: 600;
+  color: #f4f1e4;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.op-issues-card-open {
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.op-issues-card-open:hover .op-issues-card-title { text-decoration: underline; }
+.op-issues-card-open:focus-visible { outline: 1px dotted var(--op-field-ink); outline-offset: 1px; }
+.op-issues-card-meta { display: flex; flex-wrap: wrap; gap: 2px 8px; font-size: 10px; color: #9fb3c6; }
+.op-issues-labels { display: flex; flex-wrap: wrap; gap: 3px; align-items: center; }
+.op-issues-label { padding: 0 5px; font-size: 9px; color: #c7d3df; background: rgba(255,255,255,0.07); border-radius: 999px; }
+.op-issues-group { display: grid; gap: 6px; padding: 8px; }
+.op-issues-group-title { display: flex; align-items: baseline; gap: 10px; margin: 0; font-size: 13px; color: #f5d547; }
+.op-issues-group .op-issues-cards { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
 @media (max-width: 640px) {
   .op-log-meta { width: 110px; }
   .op-log-hash { width: 64px; }
+  .op-issues-columns { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
 }
 .op-toasts {
   position: absolute;

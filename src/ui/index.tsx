@@ -28,6 +28,7 @@ import { OfficeSettingsPanel } from "./SettingsPanel.js";
 import { DoneTimeline } from "./DoneTimeline.js";
 import { MAX_TOASTS, OfficeToasts, type OfficeToast } from "./OfficeToasts.js";
 import { LogsPanel } from "./LogsPanel.js";
+import { IssuesPanel } from "./IssuesPanel.js";
 import { playCheer, playDecisionAlert, playHello } from "./sounds.js";
 import { startCheer, startWave } from "../office/engine/cheer.js";
 import type { Logins } from "../logins.js";
@@ -587,14 +588,14 @@ export function OfficeSimCameraPage() {
   /** The cameras each agent waiting on a decision can be seen on, one entry per agent */
   const [decisionCameras, setDecisionCameras] = useState<CameraId[][]>([]);
   const [theme, setTheme] = useState<ThemeId>(() => readStoredTheme());
-  const [view, setView] = useState<"camera" | "stats" | "logs" | "settings" | "about">("camera");
+  const [view, setView] = useState<"camera" | "stats" | "logs" | "issues" | "settings" | "about">("camera");
   // Panels opened at least once, kept mounted from then on
   const [openedPanels, setOpenedPanels] = useState<ReadonlySet<string>>(() => new Set());
   useEffect(() => {
     if (view !== "camera" && !openedPanels.has(view)) setOpenedPanels((opened) => new Set(opened).add(view));
   }, [view, openedPanels]);
   // The About panel holds no fetched state, so it's only mounted while you're looking at it
-  const panelOpened = (panel: "stats" | "logs" | "settings") => view === panel || openedPanels.has(panel);
+  const panelOpened = (panel: "stats" | "logs" | "issues" | "settings") => view === panel || openedPanels.has(panel);
   /** The agent whose character and room are being changed (from their avatar on the Agents tab) */
   const [editingAgent, setEditingAgent] = useState<{ id: string; name: string } | null>(null);
   useEffect(() => {
@@ -852,11 +853,13 @@ export function OfficeSimCameraPage() {
                 ? "Agents"
                 : view === "logs"
                   ? "Activity"
-                  : view === "settings"
-                    ? "Settings"
-                    : view === "about"
-                      ? "About"
-                      : `${CAMERAS.find((option) => option.id === camera)?.room} Camera`}
+                  : view === "issues"
+                    ? "Issues"
+                    : view === "settings"
+                      ? "Settings"
+                      : view === "about"
+                        ? "About"
+                        : `${CAMERAS.find((option) => option.id === camera)?.room} Camera`}
             </span>
           </span>
           <span className="op-titlebar-actions">
@@ -900,6 +903,7 @@ export function OfficeSimCameraPage() {
               badge={agentsAwaitingDecisions ? <PixelSprite sprite={DECISION_BADGE} /> : undefined}
             />
             <GameTab icon="📜" label="Activity" title="Done tasks and the git log" pressed={view === "logs"} onClick={() => setView("logs")} />
+            <GameTab icon="📋" label="Issues" title="Every open issue in the tracked repos" pressed={view === "issues"} onClick={() => setView("issues")} />
             <GameTab
               icon="⚙️"
               label="Settings"
@@ -973,6 +977,11 @@ export function OfficeSimCameraPage() {
           {panelOpened("logs") ? (
             <div hidden={view !== "logs"}>
               <LogsPanel companyId={companyId ?? null} onIssueClick={openIssue} active={view === "logs"} />
+            </div>
+          ) : null}
+          {panelOpened("issues") ? (
+            <div hidden={view !== "issues"}>
+              <IssuesPanel active={view === "issues"} onIssueClick={openIssue} />
             </div>
           ) : null}
           {view === "about" ? <AboutPanel /> : null}

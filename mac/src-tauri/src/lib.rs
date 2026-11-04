@@ -1,5 +1,7 @@
 mod data;
+mod git_activity;
 mod github;
+mod issues_board;
 mod model;
 mod monitor;
 mod music;

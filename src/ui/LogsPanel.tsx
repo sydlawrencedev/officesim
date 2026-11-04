@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePluginData } from "@paperclipai/plugin-sdk/ui";
-import type { DoneTask, DoneTasksLog, GitChangeKind, GitChanges, GitLog } from "../logs.js";
+import type { DoneTask, DoneTasksLog, GitActivity, GitChangeKind, GitChanges, GitCommit } from "../logs.js";
 import { duration, timeAgo } from "./PixelOfficeCanvas.js";
 import { readSetting, writeSetting } from "./storage.js";
 
@@ -202,24 +202,17 @@ function GitLogView({ companyId, active }: { companyId: string | null; active: b
 }
 
 function GitLogBody({ companyId, active }: { companyId: string | null; active: boolean }) {
-  const { data, loading, error, refresh } = usePluginData<GitLog>("git-log", { companyId });
+  const { data, loading, error, refresh } = usePluginData<GitActivity>("git-activity", { companyId });
   usePolling(refresh, active);
   if (!active) return null;
 
   if (error && !data) return <div className="op-list op-log"><div className="op-list-empty">Couldn’t read the git log.</div></div>;
   if (!data) return <div className="op-list op-log"><div className="op-list-empty">{loading ? "Loading…" : ""}</div></div>;
-  if (data.state === "unconfigured") {
-    return (
-      <div className="op-list op-log">
-        <div className="op-list-empty">Set <strong>Git repository path</strong> in the OfficeSim plugin settings to see the repo your agents commit to.</div>
-      </div>
-    );
-  }
-  if (data.state === "error") {
+  if (data.state === "unconfigured" || data.repos.length === 0) {
     return (
       <div className="op-list op-log">
         <div className="op-list-empty">
-          Couldn’t read <code>{data.repoPath}</code>: {data.message}
+          No git repos yet. The office reads the repos the agents work in, so it fills up as they start.
         </div>
       </div>
     );
@@ -228,27 +221,40 @@ function GitLogBody({ companyId, active }: { companyId: string | null; active: b
   return (
     <div className="op-list op-log">
       <div className="op-log-toolbar">
-        <span className="op-log-repo" title={data.repoPath}>
-          {data.repoPath.split("/").filter(Boolean).pop()}
-          {data.branch ? <span className="op-log-branch">⎇ {data.branch}</span> : null}
+        <span className="op-log-repo">
+          {data.repos.length} repo{data.repos.length === 1 ? "" : "s"}
         </span>
       </div>
       <div className="op-log-body">
-        <div className="op-log-section">Uncommitted changes</div>
-        <ChangesOverview changes={data.changes} />
-        <div className="op-log-section">Recent commits</div>
-        {data.commits.map((commit) => (
-          <div key={commit.hash} className="op-log-row op-log-commit">
-            <span className="op-log-hash" title={commit.hash}>{commit.shortHash}</span>
-            <span className="op-log-main">
-              <span className="op-log-title">{commit.subject}</span>
-              <span className="op-log-dim">
-                {commit.author} · <span title={new Date(commit.date).toLocaleString()}>{timeAgo(commit.date)}</span>
-                {commit.filesChanged ? ` · ${commit.filesChanged} file${commit.filesChanged === 1 ? "" : "s"}` : null}
-              </span>
-            </span>
-            <LineCounts added={commit.insertions} removed={commit.deletions} />
-          </div>
+        {data.repos.map((repo) => (
+          <section key={repo.repoPath} className="op-log-repo-section">
+            <div className="op-log-section">
+              {repo.name}
+              {repo.branch ? <span className="op-log-branch">⎇ {repo.branch}</span> : null}
+            </div>
+            {repo.problem ? (
+              <div className="op-log-row op-log-clean" style={{ color: "#ff8a80" }}>
+                Couldn’t read it: {repo.problem}
+              </div>
+            ) : (
+              <>
+                <ChangesOverview changes={repo.changes} />
+                {repo.commits.map((commit) => (
+                  <div key={commit.hash} className="op-log-row op-log-commit">
+                    <span className="op-log-hash" title={commit.hash}>{commit.shortHash}</span>
+                    <span className="op-log-main">
+                      <span className="op-log-title">{commit.subject}</span>
+                      <span className="op-log-dim">
+                        {commit.author} · <span title={new Date(commit.date).toLocaleString()}>{timeAgo(commit.date)}</span>
+                        {commit.filesChanged ? ` · ${commit.filesChanged} file${commit.filesChanged === 1 ? "" : "s"}` : null}
+                      </span>
+                    </span>
+                    <LineCounts added={commit.insertions} removed={commit.deletions} />
+                  </div>
+                ))}
+              </>
+            )}
+          </section>
         ))}
       </div>
     </div>

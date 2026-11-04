@@ -58,9 +58,11 @@ pub fn get(key: &str, params: &Value) -> Result<Value, String> {
         }),
         "scorecard" => json!({ "scorecard": null }),
         "kanban-board" => tasks::kanban_board(),
+        "issues-board" => crate::issues_board::issues_board(),
         "issues-done" => tasks::issues_done(),
         "done-tasks" => tasks::done_tasks(),
         "git-log" => json!({ "state": "unconfigured" }),
+        "git-activity" => crate::git_activity::git_activity(),
         "wall-charts" => json!({ "charts": {} }),
         "logins" => json!({ "live": false, "recent": [] }),
         // The Settings tab's agent sources, to turn on and off
@@ -114,8 +116,37 @@ mod tests {
 
     #[test]
     fn every_ui_key_answers() {
-        for key in ["camera-room", "character-settings", "agent-stats", "game-high-scores", "scorecard", "kanban-board", "issues-done", "done-tasks", "git-log", "wall-charts", "logins", "attention", "harnesses"] {
+        for key in ["camera-room", "character-settings", "agent-stats", "game-high-scores", "scorecard", "kanban-board", "issues-board", "issues-done", "done-tasks", "git-log", "git-activity", "wall-charts", "logins", "attention", "harnesses"] {
             assert!(get(key, &json!({})).is_ok(), "{key}");
+        }
+    }
+
+    /// `cargo test -- --ignored --nocapture` prints the Issues tab's board and the git activity.
+    #[test]
+    #[ignore]
+    fn prints_this_macs_issues_board() {
+        let board = get("issues-board", &json!({})).unwrap();
+        println!("repos: {}", board["repos"]);
+        for column in board["columns"].as_array().unwrap() {
+            let status = column["status"].as_str().unwrap_or("");
+            let issues = column["issues"].as_array().unwrap();
+            println!("  {status}: {}", issues.len());
+            for issue in issues.iter().take(3) {
+                println!(
+                    "    {} {} [{}] labels={} comments={} updated={}",
+                    issue["identifier"].as_str().unwrap_or(""),
+                    issue["title"].as_str().unwrap_or(""),
+                    issue["priority"].as_str().unwrap_or(""),
+                    issue["labels"],
+                    issue["comments"],
+                    issue["updatedAt"],
+                );
+            }
+        }
+        let activity = get("git-activity", &json!({})).unwrap();
+        println!("repos with git: {}", activity["repos"].as_array().unwrap().len());
+        for repo in activity["repos"].as_array().unwrap() {
+            println!("  {} ({}): {} commits, {} changed files", repo["name"].as_str().unwrap_or(""), repo["branch"].as_str().unwrap_or("?"), repo["commits"].as_array().unwrap().len(), repo["changes"]["files"]);
         }
     }
 

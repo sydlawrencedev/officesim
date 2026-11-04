@@ -90,9 +90,11 @@ Every open issue in the repos the agents work in, as a kanban board: the same fi
 boardroom's board (backlog, to do, in progress, in review, blocked), with more about each issue —
 its labels, who it's assigned to, how many comments it has and when it was last touched.
 
-The board can be grouped by column or by repo, and filtered by any of them. Each column is
-tinted with its stage's colour and its header floats as the board scrolls, so the stage is always
-named. Each repo keeps its own colour wherever it appears.
+The board can be grouped by column or by repo, and filtered by any of them. It fills the height
+of the window. Each column is tinted with its stage's colour and its header floats as the board
+scrolls, so the stage is always named. Each repo keeps its own colour wherever it appears. A
+column with nothing in it collapses to just its header, so the columns with work in them get the
+room.
 
 An issue's column doesn't come from its labels alone. The office knows what the agents are working
 on, so:
@@ -109,13 +111,17 @@ Paperclip plugin's own board shows that company's issues instead.
 
 **+ New issue** opens a form that adds an issue to any of the repos, on GitHub.
 
+**Refresh** reads GitHub again straight away, rather than waiting for the two-minute sync.
+
 ## The Activity tab
 
 Two lists, each newest first, each entry saying which repo it came from. A coloured rule under
-the buttons says which list is showing: green for issues, blue for git.
+the buttons says which list is showing: green for issues, blue for git. Both lists fill the
+height of the window, like the Agents one does.
 
 - **Issues** — the issues closed recently across the tracked repos. How it went (how many comments,
-  when it closed) sits under the labels, and each repo keeps its own colour.
+  when it closed) sits under the labels, and each repo keeps its own colour. An issue with nobody
+  on it says nothing, rather than saying "Unassigned".
 - **Git** — every repo's commits in one list, with the repo and branch on each
 
 ## The Mac app
@@ -125,7 +131,9 @@ the buttons says which list is showing: green for issues, blue for git.
 - A notification when an agent starts waiting on you (Settings → This Mac, or the menu bar menu).
 - The mini camera: a small always-on-top window with just the camera.
 - Launch at login, into the menu bar. Closing the office window leaves OfficeSim in the menu bar.
-- The toolbar's Done count is the same closed issues the Activity tab shows.
+- The toolbar's Done count is the same closed issues the Activity tab shows. Beside it, the chart
+  shows the issues done in each window as green bars, with the commits made in the same windows as
+  a red line over them.
 - GitHub is read in the background while the office opens, and each repo is asked for side by
   side, so the Issues and Activity tabs have their numbers straight away.
 

@@ -26,6 +26,41 @@ pub fn git_activity() -> Value {
     json!({ "state": if repos.is_empty() { "unconfigured" } else { "ok" }, "repos": repos })
 }
 
+/// The commits made in each window of the done timeline, oldest first, and how many there are.
+///
+/// The chart in the toolbar shows this as a red line over the issues-done bars, so the two are
+/// on the same scale and the same windows.
+pub fn commits_per_window(windows: usize, window_minutes: i32) -> (Vec<i64>, i64) {
+    let now = crate::time::now_millis();
+    let commits = git_commits();
+    let Some(list) = commits.get("commits").and_then(Value::as_array) else {
+        return (vec![0i64; windows], 0);
+    };
+    count_commits(list, now, windows, window_minutes)
+}
+
+/// Counts commits into the window each one was made in.
+///
+/// A commit older than every window is counted in the total, but not in a window.
+fn count_commits(commits: &[Value], now: i64, windows: usize, window_minutes: i32) -> (Vec<i64>, i64) {
+    let window_millis = i64::from(window_minutes) * 60 * 1000;
+    let mut counts = vec![0i64; windows];
+    let mut total = 0i64;
+    for commit in commits {
+        let Some(date) = commit.get("date").and_then(Value::as_str).and_then(crate::time::millis_from_iso) else {
+            continue;
+        };
+        total += 1;
+        let ago = (now - date).max(0);
+        let windows_ago = ago / window_millis;
+        let index = windows as i64 - 1 - windows_ago;
+        if let Some(window) = usize::try_from(index).ok().and_then(|index| counts.get_mut(index)) {
+            *window += 1;
+        }
+    }
+    (counts, total)
+}
+
 /// Every repo's commits in one list, newest first.
 ///
 /// The commits of all the repos the agents work in, together rather than split by repo.
@@ -288,6 +323,26 @@ fn commits_of(log: &str) -> Vec<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::time::iso_from_millis;
+
+    /// A commit lands in the window it was made in.
+    #[test]
+    fn counts_commits_into_their_windows() {
+        let now = 1_800_000_000_000i64;
+        let minute = 60 * 1000;
+        let commit = |ago: i64| json!({ "date": iso_from_millis(now - ago) });
+        let commits = vec![commit(0), commit(5 * minute), commit(25 * minute)];
+        let (counts, total) = count_commits(&commits, now, 12, 10);
+        // Just now and five minutes ago are both in the window ending now
+        assert_eq!(counts[11], 2);
+        // Twenty-five minutes ago is two windows back
+        assert_eq!(counts[9], 1);
+        assert_eq!(total, 3);
+        // A commit older than every window is in the total, but not in a window
+        let (counts, total) = count_commits(&[commit(1000 * minute)], now, 12, 10);
+        assert_eq!(counts.iter().sum::<i64>(), 0);
+        assert_eq!(total, 1);
+    }
 
     #[test]
     fn names_the_kinds_of_change() {

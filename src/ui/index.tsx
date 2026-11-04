@@ -983,7 +983,7 @@ export function OfficeSimCameraPage() {
           {/* The Agents and Activity panels stay mounted (hidden) once opened, so coming back to one shows
               its last numbers straight away while it refreshes */}
           {panelOpened("stats") ? (
-            <div hidden={view !== "stats"}>
+            <div hidden={view !== "stats"} className="op-panel">
               <StatsPanel
                 active={view === "stats"}
                 companyId={companyId ?? null}
@@ -999,12 +999,12 @@ export function OfficeSimCameraPage() {
             </div>
           ) : null}
           {panelOpened("logs") ? (
-            <div hidden={view !== "logs"}>
+            <div hidden={view !== "logs"} className="op-panel">
               <LogsPanel companyId={companyId ?? null} onIssueClick={openIssue} active={view === "logs"} />
             </div>
           ) : null}
           {panelOpened("issues") ? (
-            <div hidden={view !== "issues"}>
+            <div hidden={view !== "issues"} className="op-panel">
               <IssuesPanel active={view === "issues"} onIssueClick={openIssue} />
             </div>
           ) : null}

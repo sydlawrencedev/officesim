@@ -14,7 +14,10 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 /// How long a repo's issues are reused before asking GitHub again.
-const CACHE_FOR: Duration = Duration::from_secs(60);
+///
+/// Two minutes: long enough that reading the board doesn't hammer GitHub, short enough that a
+/// change someone made is noticed while they're looking at it.
+pub const CACHE_FOR: Duration = Duration::from_secs(2 * 60);
 /// Most issues read from one repo, so a busy board doesn't ask for hundreds.
 const MAX_ISSUES: usize = 100;
 
@@ -356,6 +359,16 @@ pub fn forget(repo: &str) {
             entries.remove(&cache_key(repo, "open"));
             entries.remove(&cache_key(repo, "closed"));
         }
+    }
+}
+
+/// Forgets every repo's cached issues, so the next read asks GitHub again.
+///
+/// This is what the Issues tab's refresh button does: it wants the answer now, not the one
+/// from a minute ago.
+pub fn forget_all() {
+    if let Ok(mut cache) = CACHE.lock() {
+        *cache = None;
     }
 }
 

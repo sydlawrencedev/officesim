@@ -87,29 +87,31 @@ export function LogsPanel({
   return (
     <div className="op-stats">
       <div className="op-stats-top">
-        <div className="op-segment" role="group" aria-label="Activity">
-          {MODES.map((option) => (
-            <button
-              key={option.id}
-              type="button"
-              className="op-button"
-              aria-pressed={mode === option.id}
-              onClick={() => {
-                setMode(option.id);
-                try {
-                  writeSetting(MODE_SETTING, option.id);
-                } catch {
-                  // Storage unavailable: the choice just lasts until reload
-                }
-              }}
-            >
-              <span aria-hidden="true">{option.icon}</span> {option.label}
-            </button>
-          ))}
+        {/* The buttons and the rule that says which list is showing: green for issues, blue for git */}
+        <div className="op-activity-head">
+          <div className="op-segment" role="group" aria-label="Activity">
+            {MODES.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                className="op-button"
+                aria-pressed={mode === option.id}
+                onClick={() => {
+                  setMode(option.id);
+                  try {
+                    writeSetting(MODE_SETTING, option.id);
+                  } catch {
+                    // Storage unavailable: the choice just lasts until reload
+                  }
+                }}
+              >
+                <span aria-hidden="true">{option.icon}</span> {option.label}
+              </button>
+            ))}
+          </div>
+          <div className="op-log-rule" style={{ background: current.color }} />
         </div>
       </div>
-      {/* A coloured rule says which of the two lists is showing: green for issues, blue for git */}
-      <div className="op-log-rule" style={{ background: current.color }} />
       {/* Both views stay mounted once opened, so switching between them shows their last data at once */}
       <IssuesLog companyId={companyId} onIssueClick={onIssueClick} active={active && mode === "issues"} />
       <GitLogView companyId={companyId} active={active && mode === "git"} />
@@ -213,8 +215,9 @@ function IssueRow({ issue, onOpen }: { issue: DoneIssue; onOpen: (issue: string,
         <span className="op-log-who" style={{ color: repoColor(issue.repo) }} title={issue.repo}>
           {issue.repo.split("/").pop()}
         </span>
-        <span title={issue.assignee ? `Assigned to ${issue.assignee}` : "Unassigned"}>
-          {issue.assignee ?? "Unassigned"}
+        {/* An issue with nobody on it says nothing, rather than saying "Unassigned" */}
+        <span title={issue.assignee ? `Assigned to ${issue.assignee}` : "Nobody's on it"}>
+          {issue.assignee ?? ""}
         </span>
       </span>
     </button>

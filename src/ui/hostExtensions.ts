@@ -67,3 +67,22 @@ export type HostIssueRepos = {
 export function useHostIssueRepos(): HostIssueRepos {
   return { repos: [], canCreate: false };
 }
+
+/**
+ * The host's own way of reading its data again now.
+ *
+ * The Mac app keeps what it reads for a couple of minutes, so a refresh button has to ask the
+ * host to throw that away first — otherwise it would just show the same answer again.
+ *
+ * Null when the host has nothing to refresh.
+ */
+export type HostRefresh = {
+  /** Whether the host can be asked to read its data again. */
+  canRefresh: boolean;
+  /** Reads the data again; resolves when it's done. */
+  refresh: () => Promise<void>;
+};
+
+export function useHostRefresh(): HostRefresh | null {
+  return null;
+}

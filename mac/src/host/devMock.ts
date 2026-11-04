@@ -96,7 +96,14 @@ export function emptyData(key: string, params: Record<string, unknown>): unknown
     case "issues-board":
       return { columns: ["backlog", "todo", "in_progress", "in_review", "blocked"].map((status) => ({ status, issues: [] })), repos: [], problems: [] };
     case "issues-done":
-      return { windows: new Array(12).fill(0), endsAt: new Date().toISOString(), total: 0, recent: [] };
+      return {
+        windows: new Array(12).fill(0),
+        commits: new Array(12).fill(0),
+        endsAt: new Date().toISOString(),
+        total: 0,
+        commitTotal: 0,
+        recent: [],
+      };
     case "done-tasks":
       return { tasks: [] };
     case "closed-issues":

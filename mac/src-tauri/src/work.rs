@@ -14,7 +14,9 @@ use std::path::PathBuf;
 const BRANCH_IS_RECENT_SECONDS: i64 = 14 * 24 * 60 * 60;
 
 /// How long the answer about the work in progress is kept.
-const CACHE_FOR: std::time::Duration = std::time::Duration::from_secs(60);
+///
+/// Two minutes, the same as GitHub's answers: the pull requests are read from GitHub too.
+const CACHE_FOR: std::time::Duration = std::time::Duration::from_secs(2 * 60);
 
 /// The last answer, and when it was read.
 struct Cached {
@@ -102,6 +104,16 @@ fn cached() -> Option<Work> {
 fn remember(work: Work) {
     if let Ok(mut cache) = CACHE.lock() {
         *cache = Some(Cached { at: std::time::Instant::now(), work });
+    }
+}
+
+/// Forgets the answer, so the next read looks afresh.
+///
+/// This is what the Issues tab's refresh button does: it wants to know what the pull requests
+/// say now, not what they said a minute ago.
+pub fn forget() {
+    if let Ok(mut cache) = CACHE.lock() {
+        *cache = None;
     }
 }
 

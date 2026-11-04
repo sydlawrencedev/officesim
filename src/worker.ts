@@ -984,7 +984,8 @@ const plugin = definePlugin({
     ctx.data.register("issues-done", async (params): Promise<IssuesDone> => {
       const companyId = typeof params.companyId === "string" ? params.companyId : null;
       const windows = new Array<number>(DONE_TIMELINE_WINDOWS).fill(0);
-      const empty = { windows, endsAt: new Date().toISOString(), total: 0, recent: [] };
+      const commits = new Array<number>(DONE_TIMELINE_WINDOWS).fill(0);
+      const empty = { windows, commits, endsAt: new Date().toISOString(), total: 0, commitTotal: 0, recent: [] };
       if (!companyId) return empty;
       try {
         const [counts, totals, recent] = await Promise.all([
@@ -1000,10 +1001,29 @@ const plugin = definePlugin({
           const index = DONE_TIMELINE_WINDOWS - 1 - Number(row.windows_ago);
           if (index >= 0 && index < DONE_TIMELINE_WINDOWS) windows[index] = Number(row.done);
         }
+        // The commits made in each window, for the chart's red line over the issues-done bars
+        const repoPath = (await loadSettings(companyId)).settings.gitRepoPath;
+        let commitTotal = 0;
+        if (repoPath) {
+          const log = await readGitLog(repoPath);
+          if (log.state === "ok") {
+            const now = Date.now();
+            const windowMillis = DONE_TIMELINE_WINDOW_MINUTES * 60_000;
+            for (const commit of log.commits) {
+              const at = new Date(commit.date).getTime();
+              if (Number.isNaN(at)) continue;
+              commitTotal += 1;
+              const index = DONE_TIMELINE_WINDOWS - 1 - Math.floor(Math.max(0, now - at) / windowMillis);
+              if (index >= 0 && index < DONE_TIMELINE_WINDOWS) commits[index] += 1;
+            }
+          }
+        }
         return {
           windows,
+          commits,
           endsAt: new Date().toISOString(),
           total: Number(totals[0]?.total ?? 0),
+          commitTotal,
           recent: recent.map((row) => ({ id: row.id, identifier: row.identifier, title: row.title, completedAt: toIso(row.completed_at), doneBy: row.done_by })),
         };
       } catch (error) {

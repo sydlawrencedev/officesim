@@ -71,6 +71,11 @@ pub fn run() {
         .setup(|app| {
             watcher::start(app.handle().clone());
             monitor::start(app.handle().clone());
+            // Reading GitHub takes a second or so, so it's read in the background while the office
+            // is opening: the Issues and Activity tabs then have their data straight away.
+            std::thread::spawn(|| {
+                crate::data::warm_up();
+            });
             // Started at login, it waits in the menu bar; otherwise the office opens
             if !std::env::args().any(|arg| arg == monitor::HIDDEN_ARG) {
                 monitor::show_main(app.handle());

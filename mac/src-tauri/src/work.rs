@@ -13,7 +13,19 @@ use std::path::PathBuf;
 /// A branch counts as work in progress only if it was committed to recently.
 const BRANCH_IS_RECENT_SECONDS: i64 = 14 * 24 * 60 * 60;
 
+/// How long the answer about the work in progress is kept.
+const CACHE_FOR: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// The last answer, and when it was read.
+struct Cached {
+    at: std::time::Instant,
+    work: Work,
+}
+
+static CACHE: std::sync::Mutex<Option<Cached>> = std::sync::Mutex::new(None);
+
 /// What the office knows about the work in progress.
+#[derive(Clone)]
 pub struct Work {
     /// The titles of the issues the agents are working on, lowercased, and who they're working on.
     pub titles: Vec<(String, String)>,
@@ -67,7 +79,34 @@ impl Work {
 }
 
 /// What the office can see of the work in progress.
+///
+/// The answer is kept for a little while: two panels ask for it, and reading the pull requests
+/// takes a moment, so the second one to ask doesn't pay for it again.
 pub fn look() -> Work {
+    if let Some(work) = cached() {
+        return work;
+    }
+    let work = read();
+    remember(work.clone());
+    work
+}
+
+/// The last answer, when it's still fresh enough.
+fn cached() -> Option<Work> {
+    let cache = CACHE.lock().ok()?;
+    let entry = cache.as_ref()?;
+    (entry.at.elapsed() < CACHE_FOR).then(|| entry.work.clone())
+}
+
+/// Keeps the answer for a little while.
+fn remember(work: Work) {
+    if let Ok(mut cache) = CACHE.lock() {
+        *cache = Some(Cached { at: std::time::Instant::now(), work });
+    }
+}
+
+/// What the office can see of the work in progress, read fresh.
+fn read() -> Work {
     let agents: Vec<Agent> = sources::agents();
     let titles: Vec<(String, String)> = agents
         .iter()
@@ -154,25 +193,31 @@ fn branch_issue_number(branch: &str) -> Option<u64> {
 /// is still open. The pull request's branch says which issue it is: "fix/520-bank-connection-claims".
 fn pull_requests(agents: &[Agent]) -> HashMap<(String, u64), bool> {
     let mut found: HashMap<(String, u64), bool> = HashMap::new();
+    // Each repo is asked for side by side, so the wait is one answer rather than one per repo
+    let mut handles = Vec::new();
     for repo in repos(agents) {
-        let Ok(output) = std::process::Command::new("/usr/bin/env")
-            .args([
-                "gh",
-                "pr",
-                "list",
-                "--repo",
-                &repo,
-                "--state",
-                "all",
-                "--limit",
-                "50",
-                "--json",
-                "number,title,body,headRefName,state,mergedAt",
-            ])
-            .output()
-        else {
-            continue;
-        };
+        handles.push(std::thread::spawn(move || {
+            let output = std::process::Command::new("/usr/bin/env")
+                .args([
+                    "gh",
+                    "pr",
+                    "list",
+                    "--repo",
+                    &repo,
+                    "--state",
+                    "all",
+                    "--limit",
+                    "50",
+                    "--json",
+                    "number,title,body,headRefName,state,mergedAt",
+                ])
+                .output();
+            (repo, output)
+        }));
+    }
+    for handle in handles {
+        let Ok((repo, output)) = handle.join() else { continue };
+        let Ok(output) = output else { continue };
         if !output.status.success() {
             continue;
         }
@@ -270,7 +315,6 @@ fn repos(agents: &[Agent]) -> Vec<String> {
     }
     repos
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;

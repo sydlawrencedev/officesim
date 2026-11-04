@@ -10,7 +10,6 @@ use crate::sources::paperclip::Paperclip;
 use crate::time::{iso_from_millis, now_iso};
 use serde::Serialize;
 use serde_json::{json, Value};
-use std::path::PathBuf;
 
 /// The board's columns, in board order.
 pub const KANBAN_STATUSES: [&str; 5] = ["backlog", "todo", "in_progress", "in_review", "blocked"];
@@ -300,7 +299,7 @@ impl TaskSource for GitHubTasks {
 
     fn detect(&self) -> bool {
         // Only when there's something to read: an agent in a repo with a GitHub remote
-        !active_folders().is_empty()
+        !crate::github::tracked_folders().is_empty()
     }
 
     /// The `TaskSource` trait has no problem of its own, so this source's trouble (gh missing or
@@ -309,14 +308,25 @@ impl TaskSource for GitHubTasks {
         if let Some(problem) = crate::github::problem() {
             return Err(problem);
         }
+        // What the office knows of the work in progress, so an issue an agent is on isn't all in
+        // one column just because it has no label saying where it is.
+        let work = crate::work::look();
         let mut issues = Vec::new();
         let mut problems = Vec::new();
-        for repo in active_repos() {
-            match crate::github::issues(&repo) {
+        // Each repo is asked for side by side, so the wait is one answer rather than one per repo
+        for (repo, answer) in crate::github::issues_for_repos(&active_repos(), "open") {
+            match answer {
                 Ok(repo_issues) => {
                     for issue in repo_issues {
-                        let column = crate::github::column_for(&issue.labels);
-                        issues.push((column.to_owned(), crate::github::to_board_issue(&issue)));
+                        let column = work.stage_of(&issue.repo, issue.number, &issue.title, &issue.labels);
+                        let mut board_issue = crate::github::to_board_issue(&issue);
+                        if let Some(object) = board_issue.as_object_mut() {
+                            object.insert(
+                                "workingAgent".to_owned(),
+                                json!(work.working_agent(&issue.repo, issue.number, &issue.title)),
+                            );
+                        }
+                        issues.push((column.to_owned(), board_issue));
                     }
                 }
                 Err(error) => problems.push(format!("{repo}: {error}")),
@@ -328,10 +338,34 @@ impl TaskSource for GitHubTasks {
         Ok(issues)
     }
 
-    /// GitHub issues don't say when they were done in a way the timeline can use, so this source
-    /// only fills the board.
+    /// The closed issues of every repo the agents work in, counted into the timeline's windows.
+    ///
+    /// This is the same data the Activity tab shows, so the toolbar's Done count agrees with it.
     fn issues_done(&self) -> Result<(Vec<i64>, i64, Vec<Value>), String> {
-        Ok((vec![0i64; DONE_TIMELINE_WINDOWS], 0, Vec::new()))
+        let now = crate::time::now_millis();
+        let mut windows = vec![0i64; DONE_TIMELINE_WINDOWS];
+        let mut total = 0i64;
+        let mut recent = Vec::new();
+        // Each repo is asked for side by side, so the wait is one answer rather than one per repo
+        for (_repo, answer) in crate::github::issues_for_repos(&active_repos(), "closed") {
+            let Ok(issues) = answer else { continue };
+            for issue in issues {
+                let Some(closed_at) = issue.closed_at.or(issue.updated_at) else { continue };
+                total += 1;
+                count_in_window(&mut windows, now - closed_at);
+                // Closed in the last few minutes, so the office can cheer it
+                if now - closed_at <= i64::from(RECENTLY_DONE_MINUTES) * 60 * 1000 {
+                    recent.push(json!({
+                        "id": format!("github:{}#{}", issue.repo, issue.number),
+                        "identifier": format!("{}#{}", issue.repo, issue.number),
+                        "title": issue.title,
+                        "completedAt": iso_from_millis(closed_at),
+                        "doneBy": issue.assignee,
+                    }));
+                }
+            }
+        }
+        Ok((windows, total, recent))
     }
 
     fn done_tasks(&self) -> Result<Vec<Value>, String> {
@@ -339,31 +373,24 @@ impl TaskSource for GitHubTasks {
     }
 }
 
-/// The folders the agents in the office work in, each one once.
-fn active_folders() -> Vec<PathBuf> {
-    let mut folders: Vec<PathBuf> = Vec::new();
-    for agent in crate::sources::agents() {
-        let Some(cwd) = agent.cwd.as_deref() else { continue };
-        let folder = PathBuf::from(cwd);
-        if !folder.is_dir() || folders.contains(&folder) {
-            continue;
-        }
-        folders.push(folder);
-    }
-    folders.sort();
-    folders
-}
-
 /// The GitHub repos the agents' folders are, each one once.
 fn active_repos() -> Vec<String> {
-    let mut repos: Vec<String> = Vec::new();
-    for folder in active_folders() {
-        let Some(repo) = crate::github::repo_slug(&folder) else { continue };
-        if !repos.contains(&repo) {
-            repos.push(repo);
-        }
+    crate::github::tracked_repos()
+}
+
+/// Counts something done `ago_millis` ago into the window it belongs to.
+///
+/// The windows are the last `DONE_TIMELINE_WINDOWS` of `DONE_TIMELINE_WINDOW_MINUTES` each, the
+/// oldest first, so the last window is the one ending now. Something older than all of them is
+/// counted in the total but not in a window.
+fn count_in_window(windows: &mut [i64], ago_millis: i64) {
+    let window_millis = i64::from(DONE_TIMELINE_WINDOW_MINUTES) * 60 * 1000;
+    let ago = ago_millis.max(0);
+    let windows_ago = ago / window_millis;
+    let index = windows.len() as i64 - 1 - windows_ago;
+    if let Some(window) = usize::try_from(index).ok().and_then(|index| windows.get_mut(index)) {
+        *window += 1;
     }
-    repos
 }
 
 /// A comment as one plain line for the Activity tab: markdown, code blocks and link targets
@@ -390,6 +417,41 @@ mod tests {
     #[test]
     fn tidies_comments() {
         assert_eq!(tidy_comment("**Done** — see [the PR](https://x/1) and `__init__`"), "Done — see the PR and init");
+    }
+
+    /// The Done count lands in the window for when the issue was closed.
+    #[test]
+    fn counts_what_was_done_into_its_window() {
+        let mut windows = vec![0i64; DONE_TIMELINE_WINDOWS];
+        let minute = 60 * 1000;
+        // Just now: the window ending now
+        count_in_window(&mut windows, 0);
+        assert_eq!(windows[DONE_TIMELINE_WINDOWS - 1], 1);
+        // Five minutes ago: still the same window
+        count_in_window(&mut windows, 5 * minute);
+        assert_eq!(windows[DONE_TIMELINE_WINDOWS - 1], 2);
+        // Fifteen minutes ago: the window before
+        count_in_window(&mut windows, 15 * minute);
+        assert_eq!(windows[DONE_TIMELINE_WINDOWS - 2], 1);
+        // Older than every window: not counted in one
+        count_in_window(&mut windows, 1000 * minute);
+        assert_eq!(windows.iter().sum::<i64>(), 3);
+    }
+
+    /// The labels that name a stage decide the column, when nothing else says where the work is.
+    #[test]
+    fn maps_labels_onto_columns() {
+        let labels = |names: &[&str]| names.iter().map(|name| name.to_lowercase()).collect::<Vec<_>>();
+        assert_eq!(status_for_labels(&labels(&["Backlog"])), "backlog");
+        assert_eq!(status_for_labels(&labels(&["in progress"])), "in_progress");
+        assert_eq!(status_for_labels(&labels(&["in-review"])), "in_review");
+        assert_eq!(status_for_labels(&labels(&["Blocked"])), "blocked");
+        assert_eq!(status_for_labels(&labels(&["todo"])), "todo");
+        // No label, or one that says nothing about the stage
+        assert_eq!(status_for_labels(&[]), "todo");
+        assert_eq!(status_for_labels(&labels(&["bug", "seo"])), "todo");
+        // The first label that names a stage wins
+        assert_eq!(status_for_labels(&labels(&["bug", "in review", "blocked"])), "in_review");
     }
 
     #[test]

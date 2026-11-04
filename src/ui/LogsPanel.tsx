@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePluginData } from "@paperclipai/plugin-sdk/ui";
 import type { DoneIssue, DoneIssues, GitChangeKind, GitChanges, GitCommits, GitCommit } from "../logs.js";
+import { repoColor } from "../issuesBoard.js";
 import { timeAgo } from "./PixelOfficeCanvas.js";
 import { readSetting, writeSetting } from "./storage.js";
 
@@ -12,9 +13,9 @@ import { readSetting, writeSetting } from "./storage.js";
  */
 
 type Mode = "issues" | "git";
-const MODES: Array<{ id: Mode; label: string; icon: string }> = [
-  { id: "issues", label: "Issues", icon: "✓" },
-  { id: "git", label: "Git", icon: "⎇" },
+const MODES: Array<{ id: Mode; label: string; icon: string; color: string }> = [
+  { id: "issues", label: "Issues", icon: "✓", color: "#6ee36e" },
+  { id: "git", label: "Git", icon: "⎇", color: "#4dabf7" },
 ];
 const MODE_SETTING = "logs-mode";
 /** Both views refresh this often while the tab is open */
@@ -82,6 +83,7 @@ export function LogsPanel({
   active?: boolean;
 }) {
   const [mode, setMode] = useState<Mode>(readStoredMode);
+  const current = MODES.find((option) => option.id === mode) ?? MODES[0];
   return (
     <div className="op-stats">
       <div className="op-stats-top">
@@ -106,6 +108,8 @@ export function LogsPanel({
           ))}
         </div>
       </div>
+      {/* A coloured rule says which of the two lists is showing: green for issues, blue for git */}
+      <div className="op-log-rule" style={{ background: current.color }} />
       {/* Both views stay mounted once opened, so switching between them shows their last data at once */}
       <IssuesLog companyId={companyId} onIssueClick={onIssueClick} active={active && mode === "issues"} />
       <GitLogView companyId={companyId} active={active && mode === "git"} />
@@ -196,20 +200,21 @@ function IssueRow({ issue, onOpen }: { issue: DoneIssue; onOpen: (issue: string,
             {issue.labels.length > 4 ? ` +${issue.labels.length - 4}` : ""}
           </span>
         ) : null}
-      </span>
-      <span className="op-log-meta">
-        <span className="op-log-who" title={issue.repo}>
-          {issue.repo.split("/").pop()}
-        </span>
-        <span title={issue.assignee ? `Assigned to ${issue.assignee}` : "Unassigned"}>
-          {issue.assignee ?? "Unassigned"}
-        </span>
-        <span className="op-log-dim">
+        {/* How it went, under the labels: how many comments it got, and when it closed */}
+        <span className="op-log-note op-log-note-dim">
           {issue.comments ? `${issue.comments} comment${issue.comments === 1 ? "" : "s"}` : null}
           {issue.comments ? " · " : null}
           <span title={issue.completedAt ? new Date(issue.completedAt).toLocaleString() : undefined}>
             closed {timeAgo(issue.completedAt) ?? "—"}
           </span>
+        </span>
+      </span>
+      <span className="op-log-meta">
+        <span className="op-log-who" style={{ color: repoColor(issue.repo) }} title={issue.repo}>
+          {issue.repo.split("/").pop()}
+        </span>
+        <span title={issue.assignee ? `Assigned to ${issue.assignee}` : "Unassigned"}>
+          {issue.assignee ?? "Unassigned"}
         </span>
       </span>
     </button>
@@ -273,7 +278,7 @@ function CommitRow({ commit }: { commit: GitCommit & { repo: string; repoName: s
         </span>
       </span>
       <span className="op-log-meta">
-        <span className="op-log-who" title={commit.repo}>
+        <span className="op-log-who" style={{ color: repoColor(commit.repo) }} title={commit.repo}>
           {commit.repoName}
         </span>
         {commit.branch ? <span className="op-log-dim">⎇ {commit.branch}</span> : null}

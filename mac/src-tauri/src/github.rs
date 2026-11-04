@@ -8,7 +8,7 @@
 
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -47,6 +47,35 @@ struct Cached {
 }
 
 static CACHE: Mutex<Option<HashMap<String, Cached>>> = Mutex::new(None);
+
+/// The GitHub repos the agents in the office work in, each one once.
+///
+/// These are the repos the Issues and Activity tabs show.
+pub fn tracked_repos() -> Vec<String> {
+    let mut repos: Vec<String> = Vec::new();
+    for folder in tracked_folders() {
+        let Some(repo) = repo_slug(&folder) else { continue };
+        if !repos.contains(&repo) {
+            repos.push(repo);
+        }
+    }
+    repos
+}
+
+/// The folders the agents in the office work in, each one once.
+pub fn tracked_folders() -> Vec<PathBuf> {
+    let mut folders: Vec<PathBuf> = Vec::new();
+    for agent in crate::sources::agents() {
+        let Some(cwd) = agent.cwd.as_deref() else { continue };
+        let folder = PathBuf::from(cwd);
+        if !folder.is_dir() || folders.contains(&folder) {
+            continue;
+        }
+        folders.push(folder);
+    }
+    folders.sort();
+    folders
+}
 
 /// The repo's owner and name, from its git remotes (the folder's own remote, no network).
 ///
@@ -98,20 +127,12 @@ fn git_remote(folder: &Path) -> Option<String> {
     first_github
 }
 
-/// The open issues of a repo, from `gh`.
-pub fn issues(repo: &str) -> Result<Vec<Issue>, String> {
-    issues_in(repo, "open")
-}
-
-/// The recently closed issues of a repo, from `gh`.
-pub fn closed_issues(repo: &str) -> Result<Vec<Issue>, String> {
-    issues_in(repo, "closed")
-}
-
 /// The issues of a repo in a given state, from `gh`.
+///
+/// Both states are cached: the closed ones are asked for by two different panels (the Activity
+/// list and the toolbar's Done count), and asking GitHub twice costs a second each time.
 fn issues_in(repo: &str, state: &str) -> Result<Vec<Issue>, String> {
-    let cache = if state == "open" { cached(repo, state) } else { None };
-    if let Some(cached) = cache {
+    if let Some(cached) = cached(repo, state) {
         return Ok(cached);
     }
     let output = gh(&[
@@ -181,21 +202,6 @@ pub fn problem() -> Option<String> {
 /// The web page of an issue.
 pub fn issue_url(issue: &Issue) -> String {
     format!("https://github.com/{}/issues/{}", issue.repo, issue.number)
-}
-
-/// The board's column for an issue, from its labels.
-pub fn column_for(labels: &[String]) -> &'static str {
-    for label in labels {
-        match label.as_str() {
-            "backlog" | "icebox" | "later" | "someday" => return "backlog",
-            "in progress" | "in-progress" | "in_progress" | "doing" | "wip" | "started" => return "in_progress",
-            "in review" | "in-review" | "in_review" | "review" | "needs review" | "needs-review" => return "in_review",
-            "blocked" | "blocker" | "waiting" | "on hold" | "on-hold" => return "blocked",
-            "todo" | "to do" | "to-do" | "ready" | "open" | "next" => return "todo",
-            _ => {}
-        }
-    }
-    "todo"
 }
 
 /// The board's priority for an issue, from its labels.
@@ -309,6 +315,28 @@ fn cached(repo: &str, state: &str) -> Option<Vec<Issue>> {
     (entry.at.elapsed() < CACHE_FOR).then(|| entry.issues.clone())
 }
 
+/// The issues of several repos at once, in the order the repos were given.
+///
+/// Each repo's answer takes a second or so, and they're asked for side by side, so the wait is
+/// one answer rather than one per repo. A repo that can't be read doesn't stop the others: its
+/// problem is the error in its place.
+pub fn issues_for_repos(repos: &[String], state: &str) -> Vec<(String, Result<Vec<Issue>, String>)> {
+    let state = state.to_owned();
+    let mut handles = Vec::with_capacity(repos.len());
+    for repo in repos {
+        let repo = repo.clone();
+        let state = state.clone();
+        handles.push(std::thread::spawn(move || {
+            let answer = issues_in(&repo, &state);
+            (repo, answer)
+        }));
+    }
+    handles
+        .into_iter()
+        .filter_map(|handle| handle.join().ok())
+        .collect()
+}
+
 /// Remembers a repo's issues for a while.
 fn remember(repo: &str, state: &str, issues: Vec<Issue>) {
     if let Ok(mut cache) = CACHE.lock() {
@@ -362,21 +390,6 @@ mod tests {
         git(&["remote", "set-url", "origin", "git@gitlab.com:owner/repo.git"]);
         assert_eq!(repo_slug(&folder), None);
         std::fs::remove_dir_all(&folder).unwrap();
-    }
-
-    #[test]
-    fn maps_labels_onto_columns() {
-        let labels = |names: &[&str]| names.iter().map(|name| name.to_lowercase()).collect::<Vec<_>>();
-        assert_eq!(column_for(&labels(&["Backlog"])), "backlog");
-        assert_eq!(column_for(&labels(&["in progress"])), "in_progress");
-        assert_eq!(column_for(&labels(&["in-review"])), "in_review");
-        assert_eq!(column_for(&labels(&["Blocked"])), "blocked");
-        assert_eq!(column_for(&labels(&["todo"])), "todo");
-        // No label, or one that says nothing about the stage
-        assert_eq!(column_for(&[]), "todo");
-        assert_eq!(column_for(&labels(&["bug", "seo"])), "todo");
-        // The first label that names a stage wins
-        assert_eq!(column_for(&labels(&["bug", "in review", "blocked"])), "in_review");
     }
 
     #[test]

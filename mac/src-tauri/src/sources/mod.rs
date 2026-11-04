@@ -95,6 +95,10 @@ pub fn active() -> Vec<Box<dyn Source>> {
 static LAST_LOOK: std::sync::Mutex<Option<(std::time::Instant, Vec<Agent>)>> = std::sync::Mutex::new(None);
 const LOOK_FRESH_FOR: std::time::Duration = std::time::Duration::from_millis(1500);
 
+/// An agent that started less than this long ago isn't shown yet: it has barely begun, so seeing
+/// it in the office is just noise.
+const MIN_AGE: std::time::Duration = std::time::Duration::from_secs(60);
+
 /// Every active source's agents.
 pub fn agents() -> Vec<Agent> {
     if let Ok(last) = LAST_LOOK.lock() {
@@ -103,10 +107,21 @@ pub fn agents() -> Vec<Agent> {
         }
     }
     let agents: Vec<Agent> = agents_from(&active()).into_iter().map(|(_, agent)| agent).collect();
+    let agents = old_enough(agents);
     if let Ok(mut last) = LAST_LOOK.lock() {
         *last = Some((std::time::Instant::now(), agents.clone()));
     }
     agents
+}
+
+/// Drops the agents that have only just started, so the office doesn't fill up with them.
+fn old_enough(agents: Vec<Agent>) -> Vec<Agent> {
+    let now = crate::time::now_millis();
+    let cutoff = now - MIN_AGE.as_millis() as i64;
+    agents
+        .into_iter()
+        .filter(|agent| agent.created_ms.is_none_or(|created| created <= cutoff))
+        .collect()
 }
 
 /// Forgets the last look, so the next one sees a source just turned on or off.
@@ -322,5 +337,30 @@ mod tests {
     #[test]
     fn wraps_events_as_run_log_lines() {
         assert_eq!(as_run_log(["{}", ""]), "{\"chunk\":\"{}\",\"stream\":\"stdout\"}\n");
+    }
+
+    /// An agent that started less than a minute ago isn't shown yet.
+    #[test]
+    fn leaves_out_agents_that_have_just_started() {
+        let now = crate::time::now_millis();
+        let agent = |name: &str, age_ms: i64| Agent {
+            name: name.to_owned(),
+            created_ms: Some(now - age_ms),
+            ..Agent::default()
+        };
+        let agents = vec![
+            agent("Brand new", 5_000),
+            agent("Just over a minute", 61_000),
+            agent("Been going a while", 600_000),
+        ];
+        let kept: Vec<String> = old_enough(agents).into_iter().map(|agent| agent.name).collect();
+        assert_eq!(kept, ["Just over a minute", "Been going a while"]);
+    }
+
+    /// An agent with no known start is shown: it can't be judged too new.
+    #[test]
+    fn shows_agents_with_no_known_start() {
+        let agent = Agent { name: "Unknown".to_owned(), created_ms: None, ..Agent::default() };
+        assert_eq!(old_enough(vec![agent]).len(), 1);
     }
 }

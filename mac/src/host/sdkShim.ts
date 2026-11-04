@@ -65,7 +65,17 @@ function toBridgeError(error: unknown): PluginBridgeError {
 }
 
 /** Data that follows agent activity, re-read as soon as the backend sees an agent's files change. */
-const LIVE_KEYS = new Set(["camera-room", "agent-stats", "kanban-board", "issues-done", "done-tasks", "character-settings", "harnesses"]);
+const LIVE_KEYS = new Set([
+  "camera-room",
+  "agent-stats",
+  "kanban-board",
+  "issues-board",
+  "issues-done",
+  "closed-issues",
+  "git-commits",
+  "character-settings",
+  "harnesses",
+]);
 
 export function usePluginData<T = unknown>(key: string, params: Record<string, unknown> = {}): PluginDataResult<T> {
   const paramsKey = JSON.stringify(params);

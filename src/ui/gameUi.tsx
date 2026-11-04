@@ -320,11 +320,56 @@ button.op-log-row:focus-visible { outline: 1px dotted var(--op-field-ink); outli
 .op-issues-card-open:hover .op-issues-card-title { text-decoration: underline; }
 .op-issues-card-open:focus-visible { outline: 1px dotted var(--op-field-ink); outline-offset: 1px; }
 .op-issues-card-meta { display: flex; flex-wrap: wrap; gap: 2px 8px; font-size: 10px; color: #9fb3c6; }
+.op-issues-working { color: #60a5fa; }
 .op-issues-labels { display: flex; flex-wrap: wrap; gap: 3px; align-items: center; }
 .op-issues-label { padding: 0 5px; font-size: 9px; color: #c7d3df; background: rgba(255,255,255,0.07); border-radius: 999px; }
 .op-issues-group { display: grid; gap: 6px; padding: 8px; }
 .op-issues-group-title { display: flex; align-items: baseline; gap: 10px; margin: 0; font-size: 13px; color: #f5d547; }
 .op-issues-group .op-issues-cards { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+/* The form for a new issue */
+.op-issue-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(4, 8, 14, 0.7);
+}
+.op-issue-form {
+  display: grid;
+  gap: 10px;
+  width: min(520px, 100%);
+  padding: 16px;
+  font-family: var(--op-font);
+  font-size: 13px;
+  color: var(--op-field-ink);
+  background: var(--op-field);
+  border: 2px solid;
+  border-color: var(--op-lo) var(--op-hi) var(--op-hi) var(--op-lo);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+}
+.op-issue-title { margin: 0; font-size: 15px; font-weight: 700; color: #f5d547; }
+.op-issue-field { display: grid; gap: 3px; }
+.op-issue-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.75; }
+.op-issue-input {
+  width: 100%;
+  padding: 6px 8px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--op-field-ink);
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid;
+  border-color: var(--op-lo) var(--op-hi) var(--op-hi) var(--op-lo);
+  border-radius: 0;
+}
+.op-issue-input:focus { outline: 1px dotted var(--op-field-ink); outline-offset: 1px; }
+.op-issue-textarea { resize: vertical; min-height: 70px; font-family: inherit; }
+.op-issue-error { padding: 6px 8px; font-size: 12px; color: #ff8a80; background: rgba(248, 113, 113, 0.1); }
+.op-issue-empty { margin: 0; opacity: 0.75; line-height: 1.5; }
+.op-issue-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 2px; }
+
 @media (max-width: 640px) {
   .op-log-meta { width: 110px; }
   .op-log-hash { width: 64px; }

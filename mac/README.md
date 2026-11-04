@@ -90,16 +90,26 @@ Every open issue in the repos the agents work in, as a kanban board: the same fi
 boardroom's board (backlog, to do, in progress, in review, blocked), with more about each issue —
 its labels, who it's assigned to, how many comments it has and when it was last touched.
 
-The columns come from the issue's labels (`in progress`, `blocked`, and so on); an issue without one
-is a to do. The board can be grouped by column or by repo, and filtered by any of them.
+The board can be grouped by column or by repo, and filtered by any of them.
+
+An issue's column doesn't come from its labels alone. The office knows what the agents are working
+on, so:
+
+- **In progress** — an agent's session is on the issue, or a branch names it ("fix/520-something")
+- **In review** — the issue's work is on a pull request, but the issue is still open
+- **Backlog, to do, blocked** — from the issue's labels
 
 On the Mac the issues come from GitHub, read with `gh`. Clicking one opens it on GitHub. The
 Paperclip plugin's own board shows that company's issues instead.
 
+**+ New issue** opens a form that adds an issue to any of the repos, on GitHub.
+
 ## The Activity tab
 
-The done tasks, and the git activity of **every** repo the agents live in: each one's branch, its
-uncommitted changes and its latest commits.
+Two lists, each newest first, each entry saying which repo it came from:
+
+- **Issues** — the issues closed recently across the tracked repos
+- **Git** — every repo's commits in one list, with the repo and branch on each
 
 ## The Mac app
 

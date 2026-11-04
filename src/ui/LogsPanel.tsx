@@ -1,16 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePluginData } from "@paperclipai/plugin-sdk/ui";
-import type { DoneTask, DoneTasksLog, GitActivity, GitChangeKind, GitChanges, GitCommit } from "../logs.js";
-import { duration, timeAgo } from "./PixelOfficeCanvas.js";
+import type { DoneIssue, DoneIssues, GitChangeKind, GitChanges, GitCommits, GitCommit } from "../logs.js";
+import { timeAgo } from "./PixelOfficeCanvas.js";
 import { readSetting, writeSetting } from "./storage.js";
 
-type Mode = "tasks" | "git";
+/*
+ * The Activity tab: the issues that were closed recently, and the git activity of every repo the
+ * agents work in.
+ *
+ * Both are in one list each, newest first, and each entry says which repo it came from.
+ */
+
+type Mode = "issues" | "git";
 const MODES: Array<{ id: Mode; label: string; icon: string }> = [
-  { id: "tasks", label: "Tasks", icon: "✓" },
+  { id: "issues", label: "Issues", icon: "✓" },
   { id: "git", label: "Git", icon: "⎇" },
 ];
 const MODE_SETTING = "logs-mode";
-/** Both logs refresh this often while the tab is open */
+/** Both views refresh this often while the tab is open */
 const LOGS_REFRESH_MS = 30_000;
 
 const PRIORITY_COLORS: Record<string, string> = {
@@ -34,11 +41,11 @@ const OVERVIEW_FOLDERS = 6;
 function readStoredMode(): Mode {
   try {
     const stored = readSetting(MODE_SETTING);
-    if (stored === "tasks" || stored === "git") return stored;
+    if (stored === "issues" || stored === "git") return stored;
   } catch {
     // Storage unavailable: use the default
   }
-  return "tasks";
+  return "issues";
 }
 
 /**
@@ -63,7 +70,7 @@ function usePolling(refresh: () => void, active: boolean) {
   }, [active]);
 }
 
-/** The Activity tab: done tasks (newest first, each opening its issue) or the repo's git log. */
+/** The Activity tab: the closed issues (newest first) or the git activity of every repo. */
 export function LogsPanel({
   companyId,
   onIssueClick,
@@ -100,13 +107,13 @@ export function LogsPanel({
         </div>
       </div>
       {/* Both views stay mounted once opened, so switching between them shows their last data at once */}
-      <TasksLog companyId={companyId} onIssueClick={onIssueClick} active={active && mode === "tasks"} />
+      <IssuesLog companyId={companyId} onIssueClick={onIssueClick} active={active && mode === "issues"} />
       <GitLogView companyId={companyId} active={active && mode === "git"} />
     </div>
   );
 }
 
-function TasksLog({
+function IssuesLog({
   companyId,
   onIssueClick,
   active,
@@ -115,15 +122,17 @@ function TasksLog({
   onIssueClick: (issue: string, newTab: boolean) => void;
   active: boolean;
 }) {
-  const { data, loading, error, refresh } = usePluginData<DoneTasksLog>("done-tasks", { companyId });
+  const { data, loading, error, refresh } = usePluginData<DoneIssues>("closed-issues", { companyId });
   usePolling(refresh, active);
   const [filter, setFilter] = useState("");
-  const tasks = useMemo(() => {
+  const issues = useMemo(() => {
     const needle = filter.trim().toLowerCase();
-    const all = data?.tasks ?? [];
+    const all = data?.issues ?? [];
     if (!needle) return all;
-    return all.filter((task) =>
-      [task.identifier, task.title, task.assignee, task.lastComment].some((text) => text?.toLowerCase().includes(needle)),
+    return all.filter((issue) =>
+      [issue.identifier, issue.title, issue.repo, issue.assignee, ...issue.labels].some((text) =>
+        text?.toLowerCase().includes(needle),
+      ),
     );
   }, [data, filter]);
   if (!active) return null;
@@ -134,59 +143,74 @@ function TasksLog({
         <input
           className="op-log-filter"
           type="search"
-          placeholder="Filter by title, id, agent…"
-          aria-label="Filter done tasks"
+          placeholder="Filter by title, id, repo…"
+          aria-label="Filter closed issues"
           value={filter}
           onChange={(event) => setFilter(event.target.value)}
         />
         <span className="op-log-count">
-          {data ? `${tasks.length}${filter ? ` of ${data.tasks.length}` : ""} done` : ""}
+          {data ? `${issues.length}${filter ? ` of ${data.issues.length}` : ""} closed` : ""}
         </span>
       </div>
       <div className="op-log-body">
         {error && !data ? (
-          <div className="op-list-empty">Couldn’t load done tasks.</div>
+          <div className="op-list-empty">Couldn’t load the closed issues.</div>
         ) : !data && loading ? (
           <div className="op-list-empty">Loading…</div>
-        ) : tasks.length === 0 ? (
-          <div className="op-list-empty">{filter ? "No done tasks match." : "No tasks done yet."}</div>
+        ) : issues.length === 0 ? (
+          <div className="op-list-empty">{filter ? "No closed issues match." : "No issues closed yet."}</div>
         ) : (
-          tasks.map((task) => <TaskRow key={task.id} task={task} onOpen={onIssueClick} />)
+          issues.map((issue) => <IssueRow key={issue.id} issue={issue} onOpen={onIssueClick} />)
         )}
       </div>
     </div>
   );
 }
 
-function TaskRow({ task, onOpen }: { task: DoneTask; onOpen: (issue: string, newTab: boolean) => void }) {
-  const took = duration(task.startedAt ?? task.createdAt, task.completedAt);
+/** One closed issue: which repo it was in, what it was, and when it was closed. */
+function IssueRow({ issue, onOpen }: { issue: DoneIssue; onOpen: (issue: string, newTab: boolean) => void }) {
+  const number = issue.identifier?.includes("#") ? issue.identifier.split("#").pop() : issue.identifier;
   return (
     <button
       type="button"
       className="op-log-row op-log-task"
       title="Open issue"
-      onClick={(event) => onOpen(task.identifier ?? task.id, event.metaKey || event.ctrlKey)}
+      onClick={(event) => onOpen(issue.identifier ?? issue.id, event.metaKey || event.ctrlKey)}
       onAuxClick={(event) => {
-        if (event.button === 1) onOpen(task.identifier ?? task.id, true);
+        if (event.button === 1) onOpen(issue.identifier ?? issue.id, true);
       }}
     >
       <span className="op-log-main">
         <span className="op-log-line">
-          <span className="op-log-dot" style={{ background: PRIORITY_COLORS[task.priority] ?? PRIORITY_COLORS.medium }} title={`${task.priority} priority`} />
-          {task.identifier ? <span className="op-log-id">{task.identifier}</span> : null}
-          <span className="op-log-title">{task.title}</span>
+          <span
+            className="op-log-dot"
+            style={{ background: PRIORITY_COLORS[issue.priority] ?? PRIORITY_COLORS.medium }}
+            title={`${issue.priority} priority`}
+          />
+          {number ? <span className="op-log-id">#{number}</span> : null}
+          <span className="op-log-title">{issue.title}</span>
         </span>
-        {task.lastComment ? <span className="op-log-note">{task.lastComment}</span> : null}
+        {issue.labels.length ? (
+          <span className="op-log-note">
+            {issue.labels.slice(0, 4).join(", ")}
+            {issue.labels.length > 4 ? ` +${issue.labels.length - 4}` : ""}
+          </span>
+        ) : null}
       </span>
       <span className="op-log-meta">
-        <span className="op-log-who">{task.assignee ?? "Unassigned"}</span>
-        <span title={task.completedAt ? new Date(task.completedAt).toLocaleString() : undefined}>done {timeAgo(task.completedAt) ?? "—"}</span>
-        <span className="op-log-dim">
-          {took ? `took ${took}` : null}
-          {took && task.comments ? " · " : null}
-          {task.comments ? `${task.comments} comment${task.comments === 1 ? "" : "s"}` : null}
+        <span className="op-log-who" title={issue.repo}>
+          {issue.repo.split("/").pop()}
         </span>
-        {task.createdBy ? <span className="op-log-dim">opened by {task.createdBy}</span> : null}
+        <span title={issue.assignee ? `Assigned to ${issue.assignee}` : "Unassigned"}>
+          {issue.assignee ?? "Unassigned"}
+        </span>
+        <span className="op-log-dim">
+          {issue.comments ? `${issue.comments} comment${issue.comments === 1 ? "" : "s"}` : null}
+          {issue.comments ? " · " : null}
+          <span title={issue.completedAt ? new Date(issue.completedAt).toLocaleString() : undefined}>
+            closed {timeAgo(issue.completedAt) ?? "—"}
+          </span>
+        </span>
       </span>
     </button>
   );
@@ -202,17 +226,17 @@ function GitLogView({ companyId, active }: { companyId: string | null; active: b
 }
 
 function GitLogBody({ companyId, active }: { companyId: string | null; active: boolean }) {
-  const { data, loading, error, refresh } = usePluginData<GitActivity>("git-activity", { companyId });
+  const { data, loading, error, refresh } = usePluginData<GitCommits>("git-commits", { companyId });
   usePolling(refresh, active);
   if (!active) return null;
 
   if (error && !data) return <div className="op-list op-log"><div className="op-list-empty">Couldn’t read the git log.</div></div>;
   if (!data) return <div className="op-list op-log"><div className="op-list-empty">{loading ? "Loading…" : ""}</div></div>;
-  if (data.state === "unconfigured" || data.repos.length === 0) {
+  if (data.state === "unconfigured" || data.commits.length === 0) {
     return (
       <div className="op-list op-log">
         <div className="op-list-empty">
-          No git repos yet. The office reads the repos the agents work in, so it fills up as they start.
+          No git activity yet. The office reads the repos the agents work in, so it fills up as they commit.
         </div>
       </div>
     );
@@ -222,41 +246,39 @@ function GitLogBody({ companyId, active }: { companyId: string | null; active: b
     <div className="op-list op-log">
       <div className="op-log-toolbar">
         <span className="op-log-repo">
-          {data.repos.length} repo{data.repos.length === 1 ? "" : "s"}
+          {data.commits.length} commit{data.commits.length === 1 ? "" : "s"}
         </span>
       </div>
       <div className="op-log-body">
-        {data.repos.map((repo) => (
-          <section key={repo.repoPath} className="op-log-repo-section">
-            <div className="op-log-section">
-              {repo.name}
-              {repo.branch ? <span className="op-log-branch">⎇ {repo.branch}</span> : null}
-            </div>
-            {repo.problem ? (
-              <div className="op-log-row op-log-clean" style={{ color: "#ff8a80" }}>
-                Couldn’t read it: {repo.problem}
-              </div>
-            ) : (
-              <>
-                <ChangesOverview changes={repo.changes} />
-                {repo.commits.map((commit) => (
-                  <div key={commit.hash} className="op-log-row op-log-commit">
-                    <span className="op-log-hash" title={commit.hash}>{commit.shortHash}</span>
-                    <span className="op-log-main">
-                      <span className="op-log-title">{commit.subject}</span>
-                      <span className="op-log-dim">
-                        {commit.author} · <span title={new Date(commit.date).toLocaleString()}>{timeAgo(commit.date)}</span>
-                        {commit.filesChanged ? ` · ${commit.filesChanged} file${commit.filesChanged === 1 ? "" : "s"}` : null}
-                      </span>
-                    </span>
-                    <LineCounts added={commit.insertions} removed={commit.deletions} />
-                  </div>
-                ))}
-              </>
-            )}
-          </section>
+        {data.commits.map((commit) => (
+          <CommitRow key={`${commit.repo}-${commit.hash}`} commit={commit} />
         ))}
       </div>
+    </div>
+  );
+}
+
+/** One commit: which repo it was made in, and what it changed. */
+function CommitRow({ commit }: { commit: GitCommit & { repo: string; repoName: string; branch: string | null } }) {
+  return (
+    <div className="op-log-row op-log-commit">
+      <span className="op-log-hash" title={commit.hash}>{commit.shortHash}</span>
+      <span className="op-log-main">
+        <span className="op-log-line">
+          <span className="op-log-title">{commit.subject}</span>
+        </span>
+        <span className="op-log-dim">
+          {commit.author} · <span title={new Date(commit.date).toLocaleString()}>{timeAgo(commit.date)}</span>
+          {commit.filesChanged ? ` · ${commit.filesChanged} file${commit.filesChanged === 1 ? "" : "s"}` : null}
+        </span>
+      </span>
+      <span className="op-log-meta">
+        <span className="op-log-who" title={commit.repo}>
+          {commit.repoName}
+        </span>
+        {commit.branch ? <span className="op-log-dim">⎇ {commit.branch}</span> : null}
+        <LineCounts added={commit.insertions} removed={commit.deletions} />
+      </span>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import type { HarnessIcon, HostFullscreen, HostMusic } from "../../../src/ui/hostExtensions";
+import type { HarnessIcon, HostFullscreen, HostIssueRepos, HostMusic } from "../../../src/ui/hostExtensions";
+import type { IssuesBoard } from "../../../src/issuesBoard";
 import { iconFor } from "./harnessIcons";
 import { musicPermission, nativeMusicStatus, startNativeMusic, stopNativeMusic, type NativeMusicStatus } from "./nativeMusic";
 import { usePluginAction, usePluginData } from "./sdkShim";
@@ -233,6 +234,21 @@ export function useHostMusic(): HostMusic {
 /** What to tell the viewer when macOS won't let the app hear the system. */
 const PERMISSION_MESSAGE =
   "macOS hasn't let OfficeSim hear your music yet. Turn on OfficeSim in System Settings → Privacy & Security → Screen & System Audio Recording, then click the DJ booth again.";
+
+/**
+ * The GitHub repos an issue can be made in: the ones the agents work in.
+ *
+ * The Issues tab already knows them, so the new issue form offers the same list.
+ */
+export function useHostIssueRepos(): HostIssueRepos {
+  const { data } = usePluginData<IssuesBoard>("issues-board");
+  const repos = (data?.repos ?? []).map((entry) => ({
+    repo: entry.repo,
+    name: entry.repo.split("/").pop() ?? entry.repo,
+    open: entry.open,
+  }));
+  return { repos, canCreate: repos.length > 0 };
+}
 
 /** The app window is the OfficeSim window, so it fills it. */
 export const FILLS_HOST_WINDOW = true;

@@ -1,22 +1,26 @@
-/** The Activity tab: done tasks, and the git log of the company's repo. Shared by the worker and the UI. */
+/** The Activity tab: closed issues, and the git log of every repo the agents work in. Shared by the worker and the UI. */
 
-export type DoneTask = {
+/** One issue, as the Activity tab shows it. */
+export type DoneIssue = {
   id: string;
   identifier: string | null;
   title: string;
   priority: string;
+  /** The repo it came from, so the list says where each one is from. */
+  repo: string;
   assignee: string | null;
-  /** The agent that created it, or "Board" for a person */
-  createdBy: string | null;
   createdAt: string | null;
-  startedAt: string | null;
   completedAt: string | null;
   comments: number;
-  /** The last comment, usually the agent's wrap-up, trimmed */
-  lastComment: string | null;
+  labels: string[];
+  url: string | null;
 };
 
-export type DoneTasksLog = { tasks: DoneTask[] };
+export type DoneIssues = {
+  issues: DoneIssue[];
+  /** Why a repo's issues couldn't be read, if they couldn't. */
+  problems: Array<{ repo: string; problem: string }>;
+};
 
 export type GitChangeKind = "modified" | "added" | "deleted" | "renamed" | "untracked";
 
@@ -61,7 +65,7 @@ export type RepoActivity = {
 };
 
 /**
- * The git activity of every repo the agents work in, newest commit first.
+ * The git activity of every repo the agents work in.
  *
  * The office used to show one repo (the company's own, from the plugin settings). It now shows
  * all of them, so the work across the agents' repos is visible in one place.
@@ -69,4 +73,26 @@ export type RepoActivity = {
 export type GitActivity = {
   state: "unconfigured" | "ok";
   repos: RepoActivity[];
+};
+
+/** One commit, with the repo it was made in, so the list says where each one is from. */
+export type RepoCommit = GitCommit & {
+  /** The repo it was made in, as "owner/repo". */
+  repo: string;
+  /** The repo's name, as the list shows it. */
+  repoName: string;
+  /** The branch it was made on. */
+  branch: string | null;
+};
+
+/**
+ * Every repo's commits in one list, newest first.
+ *
+ * The commits of all the repos the agents work in, together rather than split by repo.
+ */
+export type GitCommits = {
+  state: "unconfigured" | "ok";
+  commits: RepoCommit[];
+  /** Why a repo couldn't be read, if it couldn't. */
+  problems: Array<{ repo: string; problem: string }>;
 };

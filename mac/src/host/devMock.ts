@@ -99,10 +99,14 @@ export function emptyData(key: string, params: Record<string, unknown>): unknown
       return { windows: new Array(12).fill(0), endsAt: new Date().toISOString(), total: 0, recent: [] };
     case "done-tasks":
       return { tasks: [] };
+    case "closed-issues":
+      return { issues: [], problems: [] };
     case "git-log":
       return { state: "unconfigured" };
     case "git-activity":
       return { state: "unconfigured", repos: [] };
+    case "git-commits":
+      return { state: "unconfigured", commits: [], problems: [] };
     case "wall-charts":
       return { charts: {} };
     case "logins":

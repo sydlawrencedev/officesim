@@ -2,7 +2,7 @@ import { definePlugin, runWorker } from "@paperclipai/plugin-sdk";
 import { PLUGIN_ID } from "./manifest.js";
 import { DONE_TIMELINE_WINDOW_MINUTES, DONE_TIMELINE_WINDOWS, type IssuesDone } from "./issuesDone.js";
 import { readGitLog } from "./gitLog.js";
-import type { DoneTasksLog, GitActivity, GitLog } from "./logs.js";
+import type { DoneIssue, DoneIssues, GitCommits, GitLog } from "./logs.js";
 import type { BoardIssue, IssuesBoard } from "./issuesBoard.js";
 import { findLogins, loginPageviewsQuery, type Logins } from "./logins.js";
 import {
@@ -154,10 +154,21 @@ const ISSUES_BOARD_SQL = `
   SELECT i.id, i.identifier, i.title, i.status, i.priority, i.created_at, i.updated_at,
          coalesce(assignee.name, CASE WHEN i.assignee_user_id IS NOT NULL THEN 'A person' END) AS assignee,
          (SELECT count(*) FROM public.issue_comments c WHERE c.issue_id = i.id AND c.deleted_at IS NULL)::int8 AS comments,
-         c.name AS company
+         c.name AS company,
+         w.name AS working_agent
   FROM public.issues i
   JOIN public.companies c ON c.id = i.company_id AND c.status = 'active'
   LEFT JOIN public.agents assignee ON assignee.id = i.assignee_agent_id
+  -- A run in progress on the issue: it holds the checkout, or was woken for this issue.
+  LEFT JOIN LATERAL (
+    SELECT a.name
+    FROM public.heartbeat_runs hr
+    JOIN public.agents a ON a.id = hr.agent_id
+    WHERE hr.company_id = i.company_id AND hr.status = 'running'
+      AND (hr.id = i.checkout_run_id OR hr.id = i.execution_run_id OR hr.context_snapshot ->> 'issueId' = i.id::text)
+    ORDER BY hr.started_at DESC
+    LIMIT 1
+  ) w ON true
   WHERE i.hidden_at IS NULL AND i.status IN (${KANBAN_STATUSES.map((status) => `'${status}'`).join(", ")})
   ORDER BY CASE i.priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END, i.created_at
 `;
@@ -335,21 +346,20 @@ const RECENTLY_DONE_SQL = `
   LIMIT 50
 `;
 
-/** Done tasks in the Activity tab, newest first */
-const DONE_TASKS_LIMIT = 100;
+/** The issues closed recently, for the Activity tab, newest first */
+const CLOSED_ISSUES_LIMIT = 100;
 const LAST_COMMENT_MAX_CHARS = 280;
 
-const DONE_TASKS_SQL = `
-  SELECT i.id, i.identifier, i.title, i.priority, i.created_at, i.started_at, i.completed_at,
+/** The issues closed recently, for the Activity tab. */
+const CLOSED_ISSUES_SQL = `
+  SELECT i.id, i.identifier, i.title, i.priority, i.created_at, i.completed_at,
          assignee.name AS assignee,
-         coalesce(creator.name, CASE WHEN i.created_by_user_id IS NOT NULL THEN 'Board' END) AS created_by,
-         (SELECT count(*) FROM public.issue_comments c WHERE c.issue_id = i.id AND c.deleted_at IS NULL) AS comments,
-         (SELECT c.body FROM public.issue_comments c WHERE c.issue_id = i.id AND c.deleted_at IS NULL
-           ORDER BY c.created_at DESC LIMIT 1) AS last_comment
+         (SELECT count(*) FROM public.issue_comments c WHERE c.issue_id = i.id AND c.deleted_at IS NULL)::int8 AS comments,
+         c.name AS company
   FROM public.issues i
+  JOIN public.companies c ON c.id = i.company_id AND c.status = 'active'
   LEFT JOIN public.agents assignee ON assignee.id = i.assignee_agent_id
-  LEFT JOIN public.agents creator ON creator.id = i.created_by_agent_id
-  WHERE i.company_id = $1 AND i.status = 'done' AND i.hidden_at IS NULL
+  WHERE i.status = 'done' AND i.hidden_at IS NULL
   ORDER BY i.completed_at DESC NULLS LAST
   LIMIT $2
 `;
@@ -1002,33 +1012,35 @@ const plugin = definePlugin({
       }
     });
 
-    ctx.data.register("done-tasks", async (params): Promise<DoneTasksLog> => {
+    // The Activity tab's issues: the ones that were closed recently, across the active companies
+    ctx.data.register("closed-issues", async (params): Promise<DoneIssues> => {
       const companyId = typeof params.companyId === "string" ? params.companyId : null;
-      if (!companyId) return { tasks: [] };
+      if (!companyId) return { issues: [], problems: [] };
       try {
-        const rows = (await ctx.db.query(DONE_TASKS_SQL, [companyId, DONE_TASKS_LIMIT])) as Array<{
-          id: string; identifier: string | null; title: string; priority: string; assignee: string | null; created_by: string | null;
-          created_at: string | Date | null; started_at: string | Date | null; completed_at: string | Date | null;
-          comments: string | number; last_comment: string | null;
+        const rows = (await ctx.db.query(CLOSED_ISSUES_SQL, [companyId, CLOSED_ISSUES_LIMIT])) as Array<{
+          id: string; identifier: string | null; title: string; priority: string; assignee: string | null;
+          created_at: string | Date | null; completed_at: string | Date | null;
+          comments: string | number; company: string;
         }>;
-        return {
-          tasks: rows.map((row) => ({
-            id: row.id,
-            identifier: row.identifier,
-            title: row.title,
-            priority: row.priority,
-            assignee: row.assignee,
-            createdBy: row.created_by,
-            createdAt: toIso(row.created_at),
-            startedAt: toIso(row.started_at),
-            completedAt: toIso(row.completed_at),
-            comments: Number(row.comments),
-            lastComment: row.last_comment ? tidyComment(row.last_comment) : null,
-          })),
-        };
+        const issues: DoneIssue[] = rows.map((row) => ({
+          id: row.id,
+          identifier: row.identifier,
+          title: row.title,
+          priority: row.priority,
+          repo: row.company,
+          assignee: row.assignee,
+          createdAt: toIso(row.created_at),
+          completedAt: toIso(row.completed_at),
+          comments: Number(row.comments),
+          labels: [],
+          url: null,
+        }));
+        // Newest closed first
+        issues.sort((a, b) => (b.completedAt ?? "").localeCompare(a.completedAt ?? ""));
+        return { issues, problems: [] };
       } catch (error) {
-        ctx.logger.warn("Could not load done tasks", { error: error instanceof Error ? error.message : String(error) });
-        return { tasks: [] };
+        ctx.logger.warn("Could not load the closed issues", { error: error instanceof Error ? error.message : String(error) });
+        return { issues: [], problems: [] };
       }
     });
 
@@ -1038,6 +1050,21 @@ const plugin = definePlugin({
       const repoPath = (await loadSettings(companyId)).settings.gitRepoPath;
       if (!repoPath) return { state: "unconfigured" };
       return readGitLog(repoPath);
+    });
+
+    // The Activity tab's git: every repo's commits in one list, newest first
+    ctx.data.register("git-commits", async (params): Promise<GitCommits> => {
+      const companyId = typeof params.companyId === "string" ? params.companyId : undefined;
+      const repoPath = (await loadSettings(companyId)).settings.gitRepoPath;
+      if (!repoPath) return { state: "unconfigured", commits: [], problems: [] };
+      const log = await readGitLog(repoPath);
+      if (log.state !== "ok") return { state: "unconfigured", commits: [], problems: [] };
+      const name = repoPath.split("/").filter(Boolean).pop() ?? repoPath;
+      return {
+        state: "ok",
+        commits: log.commits.map((commit) => ({ ...commit, repo: name, repoName: name, branch: log.branch })),
+        problems: [],
+      };
     });
 
     // The Issues tab: every open issue across the active companies, as a board
@@ -1056,6 +1083,7 @@ const plugin = definePlugin({
           assignee: string | null;
           comments: number;
           company: string;
+          working_agent: string | null;
         }>;
         for (const row of rows) {
           const repo = row.company;
@@ -1069,6 +1097,7 @@ const plugin = definePlugin({
             repo,
             labels: [],
             assignee: row.assignee,
+            workingAgent: row.working_agent,
             comments: Number(row.comments ?? 0),
             createdAt: toIso(row.created_at),
             updatedAt: toIso(row.updated_at),
@@ -1083,28 +1112,6 @@ const plugin = definePlugin({
         columns,
         repos: [...repos.entries()].map(([repo, open]) => ({ repo, open })).sort((a, b) => b.open - a.open),
         problems: [],
-      };
-    });
-
-    // The Activity tab's git: every repo the company's agents work in
-    ctx.data.register("git-activity", async (params): Promise<GitActivity> => {
-      const companyId = typeof params.companyId === "string" ? params.companyId : undefined;
-      const repoPath = (await loadSettings(companyId)).settings.gitRepoPath;
-      if (!repoPath) return { state: "unconfigured", repos: [] };
-      const log = await readGitLog(repoPath);
-      if (log.state !== "ok") return { state: "unconfigured", repos: [] };
-      return {
-        state: "ok",
-        repos: [
-          {
-            repoPath: log.repoPath,
-            name: log.repoPath.split("/").filter(Boolean).pop() ?? log.repoPath,
-            branch: log.branch,
-            changes: log.changes,
-            commits: log.commits,
-            problem: null,
-          },
-        ],
       };
     });
 

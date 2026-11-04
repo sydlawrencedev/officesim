@@ -29,6 +29,7 @@ import { DoneTimeline } from "./DoneTimeline.js";
 import { MAX_TOASTS, OfficeToasts, type OfficeToast } from "./OfficeToasts.js";
 import { LogsPanel } from "./LogsPanel.js";
 import { IssuesPanel } from "./IssuesPanel.js";
+import { NewIssueDialog } from "./NewIssueDialog.js";
 import { playCheer, playDecisionAlert, playHello } from "./sounds.js";
 import { startCheer, startWave } from "../office/engine/cheer.js";
 import type { Logins } from "../logins.js";
@@ -42,7 +43,7 @@ import { StatsPanel } from "./StatsPanel.js";
 import { stopMusic } from "./musicListener.js";
 import type { GameHighScores } from "../worker.js";
 import { pickDiversePalette } from "../core/paletteUtils.js";
-import { FILLS_HOST_WINDOW, useHostFullscreen } from "./hostExtensions.js";
+import { FILLS_HOST_WINDOW, useHostFullscreen, useHostIssueRepos } from "./hostExtensions.js";
 
 type CameraRoomData = {
   room: string;
@@ -598,6 +599,10 @@ export function OfficeSimCameraPage() {
   const panelOpened = (panel: "stats" | "logs" | "issues" | "settings") => view === panel || openedPanels.has(panel);
   /** The agent whose character and room are being changed (from their avatar on the Agents tab) */
   const [editingAgent, setEditingAgent] = useState<{ id: string; name: string } | null>(null);
+  /** Whether the new issue form is showing */
+  const [newIssueOpen, setNewIssueOpen] = useState(false);
+  /** The repos an issue can be made in, when the host can make one */
+  const hostIssueRepos = useHostIssueRepos();
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -817,6 +822,12 @@ export function OfficeSimCameraPage() {
   }
 
   function addTask() {
+    // The host can make an issue itself (the Mac app, on a GitHub repo); otherwise Paperclip's
+    // own New Task dialog is opened.
+    if (hostIssueRepos.canCreate) {
+      setNewIssueOpen(true);
+      return;
+    }
     if (!openNewTaskDialog()) navigation.navigate("/issues");
   }
 
@@ -844,6 +855,19 @@ export function OfficeSimCameraPage() {
             else navigation.navigate("/decisions");
           }}
         />
+        {newIssueOpen ? (
+          <NewIssueDialog
+            repos={hostIssueRepos.repos}
+            onClose={() => setNewIssueOpen(false)}
+            onCreated={({ identifier, url }) => {
+              setNewIssueOpen(false);
+              // The new issue is on the board, so the board is read again
+              kanban.refresh();
+              if (url) window.open(url, "_blank", "noopener");
+              else openIssue(identifier, true);
+            }}
+          />
+        ) : null}
         <header className="op-titlebar">
           <span>
             OfficeSim{" "}
@@ -922,7 +946,7 @@ export function OfficeSimCameraPage() {
           <div className="op-controls">
             <DoneTimeline data={issuesDone.data ?? null} />
             <button type="button" className="op-button op-button-new" onClick={addTask}>
-              ＋ New task
+              ＋ New issue
             </button>
             <button
               type="button"

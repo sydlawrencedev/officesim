@@ -13,7 +13,7 @@ use std::process::Command;
 /// Most commits shown for one repo.
 const COMMITS: usize = 40;
 
-/// The activity of every repo the agents work in, newest first.
+/// The git activity of every repo the agents work in.
 pub fn git_activity() -> Value {
     let mut repos: Vec<Value> = Vec::new();
     for folder in folders() {
@@ -23,18 +23,50 @@ pub fn git_activity() -> Value {
             .unwrap_or_else(|| folder.to_string_lossy().into_owned());
         repos.push(repo_activity(&folder, &name));
     }
-    // The newest commit first, so the busiest repo is at the top
-    repos.sort_by_key(|repo| {
-        -repo
-            .get("commits")
-            .and_then(Value::as_array)
-            .and_then(|commits| commits.first())
-            .and_then(|commit| commit.get("date"))
+    json!({ "state": if repos.is_empty() { "unconfigured" } else { "ok" }, "repos": repos })
+}
+
+/// Every repo's commits in one list, newest first.
+///
+/// The commits of all the repos the agents work in, together rather than split by repo.
+pub fn git_commits() -> Value {
+    let mut commits: Vec<Value> = Vec::new();
+    let mut problems: Vec<Value> = Vec::new();
+    for folder in folders() {
+        let name = folder
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| folder.to_string_lossy().into_owned());
+        let repo = crate::github::repo_slug(&folder).unwrap_or_else(|| name.clone());
+        let activity = repo_activity(&folder, &name);
+        if let Some(problem) = activity.get("problem").and_then(Value::as_str) {
+            problems.push(json!({ "repo": repo, "problem": problem }));
+            continue;
+        }
+        let branch = activity.get("branch").and_then(Value::as_str).map(str::to_owned);
+        for commit in activity.get("commits").and_then(Value::as_array).into_iter().flatten() {
+            let mut commit = commit.clone();
+            if let Some(object) = commit.as_object_mut() {
+                object.insert("repo".to_owned(), json!(repo));
+                object.insert("repoName".to_owned(), json!(name));
+                object.insert("branch".to_owned(), json!(branch));
+            }
+            commits.push(commit);
+        }
+    }
+    // Newest first
+    commits.sort_by_key(|commit| {
+        -commit
+            .get("date")
             .and_then(Value::as_str)
-            .and_then(|date| crate::time::millis_from_iso(date))
+            .and_then(crate::time::millis_from_iso)
             .unwrap_or(0)
     });
-    json!({ "state": if repos.is_empty() { "unconfigured" } else { "ok" }, "repos": repos })
+    json!({
+        "state": if commits.is_empty() && problems.is_empty() { "unconfigured" } else { "ok" },
+        "commits": commits,
+        "problems": problems,
+    })
 }
 
 /// One repo's activity: its branch, its uncommitted changes and its latest commits.

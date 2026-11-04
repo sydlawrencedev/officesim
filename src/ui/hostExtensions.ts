@@ -50,3 +50,20 @@ export type HostMusic = {
 export function useHostMusic(): HostMusic | null {
   return null;
 }
+
+/**
+ * The repos the host can make an issue in.
+ *
+ * The Mac app knows the GitHub repos the agents work in, and can open an issue on any of them.
+ * The plugin uses Paperclip's own dialog instead, so it has none.
+ */
+export type HostIssueRepos = {
+  /** The repos, with how many issues each has open. */
+  repos: Array<{ repo: string; name: string; open: number }>;
+  /** Whether the host can make an issue at all. */
+  canCreate: boolean;
+};
+
+export function useHostIssueRepos(): HostIssueRepos {
+  return { repos: [], canCreate: false };
+}

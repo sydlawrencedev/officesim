@@ -1,3 +1,4 @@
+mod closed_issues;
 mod data;
 mod git_activity;
 mod github;
@@ -11,6 +12,7 @@ mod sources;
 mod tasks;
 mod time;
 mod watcher;
+mod work;
 
 use serde_json::Value;
 use tauri::Emitter;

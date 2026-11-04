@@ -234,6 +234,11 @@ function IssueCard({ issue, onOpen }: { issue: BoardIssue; onOpen: (issue: strin
         <span className="op-issues-card-title">{issue.title}</span>
       </button>
       <div className="op-issues-card-meta">
+        {issue.workingAgent ? (
+          <span className="op-issues-working" title="Being worked on now">
+            ● {issue.workingAgent}
+          </span>
+        ) : null}
         {issue.assignee ? <span title="Assigned to">{issue.assignee}</span> : <span className="op-log-dim">Unassigned</span>}
         {issue.comments ? <span>{issue.comments} comment{issue.comments === 1 ? "" : "s"}</span> : null}
         {issue.updatedAt ? <span title={new Date(issue.updatedAt).toLocaleString()}>updated {timeAgo(issue.updatedAt)}</span> : null}

@@ -16,6 +16,8 @@ export type BoardIssue = {
   labels: string[];
   /** Who it's assigned to, by name. */
   assignee: string | null;
+  /** Who's working on it now, if anyone (an agent, or a branch naming it). */
+  workingAgent: string | null;
   /** How many comments it has. */
   comments: number;
   /** When it was opened. */

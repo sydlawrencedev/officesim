@@ -36,9 +36,11 @@ pub struct Issue {
     pub created_at: Option<i64>,
     /// When it was last touched, in milliseconds since the epoch.
     pub updated_at: Option<i64>,
+    /// When it was closed, in milliseconds since the epoch.
+    pub closed_at: Option<i64>,
 }
 
-/// The issues of one repo, and when they were read.
+/// The cached issues of a repo, and when they were read.
 struct Cached {
     at: Instant,
     issues: Vec<Issue>,
@@ -98,7 +100,18 @@ fn git_remote(folder: &Path) -> Option<String> {
 
 /// The open issues of a repo, from `gh`.
 pub fn issues(repo: &str) -> Result<Vec<Issue>, String> {
-    if let Some(cached) = cached(repo) {
+    issues_in(repo, "open")
+}
+
+/// The recently closed issues of a repo, from `gh`.
+pub fn closed_issues(repo: &str) -> Result<Vec<Issue>, String> {
+    issues_in(repo, "closed")
+}
+
+/// The issues of a repo in a given state, from `gh`.
+fn issues_in(repo: &str, state: &str) -> Result<Vec<Issue>, String> {
+    let cache = if state == "open" { cached(repo, state) } else { None };
+    if let Some(cached) = cache {
         return Ok(cached);
     }
     let output = gh(&[
@@ -109,9 +122,9 @@ pub fn issues(repo: &str) -> Result<Vec<Issue>, String> {
         "--limit",
         &MAX_ISSUES.to_string(),
         "--state",
-        "open",
+        state,
         "--json",
-        "number,title,labels,assignees,comments,createdAt,updatedAt",
+        "number,title,labels,assignees,comments,createdAt,updatedAt,closedAt",
     ])?;
     let parsed: Vec<Value> = serde_json::from_str(&output).map_err(|error| format!("Can't read GitHub's answer: {error}"))?;
     let issues: Vec<Issue> = parsed
@@ -144,10 +157,11 @@ pub fn issues(repo: &str) -> Result<Vec<Issue>, String> {
                 .unwrap_or(0);
             let created_at = issue.get("createdAt").and_then(Value::as_str).and_then(crate::time::millis_from_iso);
             let updated_at = issue.get("updatedAt").and_then(Value::as_str).and_then(crate::time::millis_from_iso);
-            Some(Issue { number, repo: repo.to_owned(), title, labels, assignee, comments, created_at, updated_at })
+            let closed_at = issue.get("closedAt").and_then(Value::as_str).and_then(crate::time::millis_from_iso);
+            Some(Issue { number, repo: repo.to_owned(), title, labels, assignee, comments, created_at, updated_at, closed_at })
         })
         .collect();
-    remember(repo, issues.clone());
+    remember(repo, state, issues.clone());
     Ok(issues)
 }
 
@@ -225,6 +239,7 @@ pub fn to_board_entry(issue: &Issue) -> Value {
         "repo": issue.repo,
         "labels": issue.labels,
         "assignee": issue.assignee,
+        "workingAgent": Value::Null,
         "comments": issue.comments,
         "createdAt": issue.created_at.map(crate::time::iso_from_millis),
         "updatedAt": issue.updated_at.map(crate::time::iso_from_millis),
@@ -235,6 +250,38 @@ pub fn to_board_entry(issue: &Issue) -> Value {
 /// The column an issue belongs to, from its labels.
 fn status_for(labels: &[String]) -> &'static str {
     crate::tasks::status_for_labels(labels)
+}
+
+/// Opens a new issue on a repo.
+///
+/// Returns the number of the new issue, so the board can show it.
+pub fn create_issue(repo: &str, title: &str, body: Option<&str>, labels: &[String]) -> Result<u64, String> {
+    let title = title.trim();
+    if title.is_empty() {
+        return Err("The issue needs a title.".to_owned());
+    }
+    let mut args = vec!["issue", "create", "--repo", repo, "--title", title];
+    if let Some(body) = body.map(str::trim).filter(|body| !body.is_empty()) {
+        args.push("--body");
+        args.push(body);
+    }
+    for label in labels {
+        let label = label.trim();
+        if !label.is_empty() {
+            args.push("--label");
+            args.push(label);
+        }
+    }
+    let output = gh(&args)?;
+    // gh answers with the issue's URL: "https://github.com/owner/repo/issues/12"
+    let number = output
+        .split('/')
+        .last()
+        .and_then(|number| number.trim().parse::<u64>().ok())
+        .ok_or_else(|| format!("GitHub didn't say which issue it made: {output}"))?;
+    // The board shows the new issue straight away
+    forget(repo);
+    Ok(number)
 }
 
 /// Runs `gh` with these arguments and returns its output.
@@ -255,17 +302,32 @@ fn gh(args: &[&str]) -> Result<String, String> {
 }
 
 /// The cached issues of a repo, when they're fresh enough.
-fn cached(repo: &str) -> Option<Vec<Issue>> {
+fn cached(repo: &str, state: &str) -> Option<Vec<Issue>> {
     let cache = CACHE.lock().ok()?;
     let entries = cache.as_ref()?;
-    let entry = entries.get(repo)?;
+    let entry = entries.get(&cache_key(repo, state))?;
     (entry.at.elapsed() < CACHE_FOR).then(|| entry.issues.clone())
 }
 
 /// Remembers a repo's issues for a while.
-fn remember(repo: &str, issues: Vec<Issue>) {
+fn remember(repo: &str, state: &str, issues: Vec<Issue>) {
     if let Ok(mut cache) = CACHE.lock() {
-        cache.get_or_insert_with(HashMap::new).insert(repo.to_owned(), Cached { at: Instant::now(), issues });
+        cache.get_or_insert_with(HashMap::new).insert(cache_key(repo, state), Cached { at: Instant::now(), issues });
+    }
+}
+
+/// Where a repo's issues are kept in the cache: one per state.
+fn cache_key(repo: &str, state: &str) -> String {
+    format!("{state}:{repo}")
+}
+
+/// Forgets a repo's cached issues, so the next read asks GitHub again.
+pub fn forget(repo: &str) {
+    if let Ok(mut cache) = CACHE.lock() {
+        if let Some(entries) = cache.as_mut() {
+            entries.remove(&cache_key(repo, "open"));
+            entries.remove(&cache_key(repo, "closed"));
+        }
     }
 }
 
@@ -338,6 +400,7 @@ mod tests {
             comments: 3,
             created_at: Some(1_790_848_844_503),
             updated_at: Some(1_790_848_844_503),
+            closed_at: None,
         };
         let board = to_board_issue(&issue);
         assert_eq!(board["identifier"], "owner/repo#42");

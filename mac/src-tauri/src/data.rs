@@ -61,8 +61,10 @@ pub fn get(key: &str, params: &Value) -> Result<Value, String> {
         "issues-board" => crate::issues_board::issues_board(),
         "issues-done" => tasks::issues_done(),
         "done-tasks" => tasks::done_tasks(),
+        "closed-issues" => crate::closed_issues::closed_issues(),
         "git-log" => json!({ "state": "unconfigured" }),
         "git-activity" => crate::git_activity::git_activity(),
+        "git-commits" => crate::git_activity::git_commits(),
         "wall-charts" => json!({ "charts": {} }),
         "logins" => json!({ "live": false, "recent": [] }),
         // The Settings tab's agent sources, to turn on and off
@@ -106,6 +108,24 @@ pub fn act(key: &str, params: &Value) -> Result<Value, String> {
             crate::open::navigate(route)?;
             Ok(Value::Null)
         }
+        // A new issue on one of the repos the agents work in
+        "create-issue" => {
+            let repo = params.get("repo").and_then(Value::as_str).ok_or("Which repo?")?;
+            let title = params.get("title").and_then(Value::as_str).ok_or("The issue needs a title.")?;
+            let body = params.get("body").and_then(Value::as_str);
+            let labels: Vec<String> = params
+                .get("labels")
+                .and_then(Value::as_array)
+                .map(|labels| labels.iter().filter_map(Value::as_str).map(str::to_owned).collect())
+                .unwrap_or_default();
+            let number = crate::github::create_issue(repo, title, body, &labels)?;
+            Ok(json!({
+                "repo": repo,
+                "number": number,
+                "identifier": format!("{repo}#{number}"),
+                "url": format!("https://github.com/{repo}/issues/{number}"),
+            }))
+        }
         _ => Err(format!("{key} isn't available in OfficeSim for Mac yet")),
     }
 }
@@ -121,6 +141,18 @@ mod tests {
         }
     }
 
+    /// `cargo test -- --ignored --nocapture` prints the closed issues.
+    #[test]
+    #[ignore]
+    fn prints_this_macs_closed() {
+        let closed = get("closed-issues", &json!({})).unwrap();
+        println!("closed issues: {}", closed["issues"].as_array().unwrap().len());
+        println!("problems: {}", closed["problems"]);
+        for issue in closed["issues"].as_array().unwrap().iter().take(3) {
+            println!("  {} {} repo={} closed={}", issue["identifier"], issue["title"], issue["repo"], issue["completedAt"]);
+        }
+    }
+
     /// `cargo test -- --ignored --nocapture` prints the Issues tab's board and the git activity.
     #[test]
     #[ignore]
@@ -131,12 +163,14 @@ mod tests {
             let status = column["status"].as_str().unwrap_or("");
             let issues = column["issues"].as_array().unwrap();
             println!("  {status}: {}", issues.len());
-            for issue in issues.iter().take(3) {
+            for issue in issues.iter().take(6) {
                 println!(
-                    "    {} {} [{}] labels={} comments={} updated={}",
+                    "    {} {} [{}] status={} by={} labels={} comments={} updated={}",
                     issue["identifier"].as_str().unwrap_or(""),
                     issue["title"].as_str().unwrap_or(""),
                     issue["priority"].as_str().unwrap_or(""),
+                    issue["status"].as_str().unwrap_or(""),
+                    issue["workingAgent"].as_str().unwrap_or("-"),
                     issue["labels"],
                     issue["comments"],
                     issue["updatedAt"],

@@ -18,13 +18,15 @@ pub const BOARD_STATUSES: [&str; 5] = ["backlog", "todo", "in_progress", "in_rev
 pub fn issues_board() -> Value {
     let mut issues: Vec<Value> = Vec::new();
     let mut problems: Vec<Value> = Vec::new();
+    // What the office knows about the work in progress, so an issue an agent is on is in progress
+    let work = crate::work::look();
 
     // GitHub: the issues of every repo an agent works in.
     for repo in repos() {
         match github::issues(&repo) {
             Ok(repo_issues) => {
                 for issue in repo_issues {
-                    issues.push(github_issue(&issue));
+                    issues.push(github_issue(&issue, &work));
                 }
             }
             Err(error) => {
@@ -74,8 +76,18 @@ pub fn issues_board() -> Value {
 }
 
 /// One GitHub issue, as the board shows it.
-fn github_issue(issue: &github::Issue) -> Value {
-    github::to_board_entry(issue)
+fn github_issue(issue: &github::Issue, work: &crate::work::Work) -> Value {
+    let mut entry = github::to_board_entry(issue);
+    if let Some(object) = entry.as_object_mut() {
+        // The stage comes from what the office knows of the work, not the labels alone
+        let stage = work.stage_of(&issue.repo, issue.number, &issue.title, &issue.labels);
+        object.insert("status".to_owned(), json!(stage));
+        object.insert(
+            "workingAgent".to_owned(),
+            json!(work.working_agent(&issue.repo, issue.number, &issue.title)),
+        );
+    }
+    entry
 }
 
 /// Paperclip's issues, across every active company.

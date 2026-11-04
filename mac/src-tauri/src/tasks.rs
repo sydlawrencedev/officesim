@@ -117,7 +117,19 @@ pub fn issues_done() -> Value {
             recent.extend(source_recent);
         }
     }
-    json!({ "windows": windows, "endsAt": now_iso(), "total": total, "recent": recent })
+    // The commits made in each window, for the chart's red line over the issues-done bars
+    let (commits, commit_total) = crate::git_activity::commits_per_window(
+        DONE_TIMELINE_WINDOWS,
+        DONE_TIMELINE_WINDOW_MINUTES,
+    );
+    json!({
+        "windows": windows,
+        "commits": commits,
+        "endsAt": now_iso(),
+        "total": total,
+        "commitTotal": commit_total,
+        "recent": recent,
+    })
 }
 
 pub fn done_tasks() -> Value {

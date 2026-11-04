@@ -5,9 +5,13 @@ export const DONE_TIMELINE_WINDOW_MINUTES = 10;
 export type IssuesDone = {
   /** Issues done in each window, oldest first; the last window ends at `endsAt` */
   windows: number[];
+  /** Commits made in each window, oldest first, on the same scale as the windows */
+  commits: number[];
   endsAt: string;
   /** Every issue ever done, for the total beside the chart */
   total: number;
+  /** Every commit ever made, for the total beside the chart */
+  commitTotal: number;
   /** Issues done in the last few minutes, so the office can cheer each one as it lands */
   recent: Array<{
     id: string;

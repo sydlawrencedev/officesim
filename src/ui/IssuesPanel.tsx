@@ -188,8 +188,14 @@ export function IssuesPanel({
               <section
                 key={column.status}
                 className="op-issues-column"
-                // The column is tinted with its stage's colour, so the board reads at a glance
-                style={{ background: `${color}14`, borderTopColor: color }}
+                data-empty={column.issues.length === 0 ? "true" : undefined}
+                // The column is tinted with its stage's colour, so the board reads at a glance.
+                // A column with nothing in it is only as wide as its header, so the ones with
+                // work in them get the room.
+                style={{
+                  background: `${color}14`,
+                  borderTopColor: color,
+                }}
               >
                 <h3 className="op-issues-column-title" style={{ borderTopColor: color }}>
                   {BOARD_STATUS_LABELS[column.status] ?? column.status}

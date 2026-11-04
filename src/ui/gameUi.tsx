@@ -34,13 +34,13 @@ const CSS = `
 /* Full screen (or a host the window fills): the window fills it and the camera (or panel) takes all the room left */
 .op-root-fill { height: 100vh; padding: 0 !important; overflow: hidden; }
 :is(.op-window:fullscreen, .op-window-fill) { display: flex; flex-direction: column; width: 100vw; height: 100vh; box-sizing: border-box; box-shadow: none; border: 0; }
-:is(.op-window:fullscreen, .op-window-fill) .op-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: auto; }
+:is(.op-window:fullscreen, .op-window-fill) .op-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 :is(.op-window:fullscreen, .op-window-fill) .op-viewport { flex: 1; height: auto !important; min-height: 0 !important; }
 :is(.op-window:fullscreen, .op-window-fill) .op-viewport > div:first-child { height: 100% !important; min-height: 0 !important; }
 :is(.op-window:fullscreen, .op-window-fill) .op-list-body { max-height: none; }
 /* Filling the host's frame (the plugin page): the same, at the height measured for it, keeping the window's border */
 .op-window-frame:not(:fullscreen) { display: flex; flex-direction: column; box-sizing: border-box; }
-.op-window-frame:not(:fullscreen) .op-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: auto; }
+.op-window-frame:not(:fullscreen) .op-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .op-window-frame:not(:fullscreen) .op-viewport { flex: 1; height: auto !important; min-height: 0 !important; }
 .op-window-frame:not(:fullscreen) .op-viewport > div:first-child { height: 100% !important; min-height: 0 !important; }
 .op-window-frame:not(:fullscreen) .op-list-body { max-height: none; }
@@ -152,9 +152,11 @@ const CSS = `
   border-color: var(--op-lo) var(--op-hi) var(--op-hi) var(--op-lo);
 }
 .op-window-main { position: relative; }
-.op-log { display: flex; flex-direction: column; overflow-x: hidden; }
+.op-log { display: flex; flex-direction: column; overflow-x: hidden; min-height: 0; }
 /* The rule under the Activity buttons: green for the issues list, blue for the git list */
 .op-log-rule { height: 2px; flex-shrink: 0; }
+/* The buttons and the rule that says which list is showing, together in the corner */
+.op-activity-head { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
 .op-log-toolbar {
   display: flex;
   align-items: center;
@@ -182,7 +184,7 @@ const CSS = `
 .op-log-repo-section { border-bottom: 1px solid rgba(255,255,255,0.08); }
 .op-log-repo-section .op-log-section { display: flex; align-items: baseline; gap: 10px; }
 .op-log-branch { font-weight: 400; font-size: 12px; color: #6ee36e; }
-.op-log-body { max-height: min(600px, calc(100vh - 300px)); min-height: 220px; overflow-y: auto; }
+.op-log-body { flex: 1; min-height: 0; overflow-y: auto; }
 .op-log-section {
   position: sticky;
   top: 0;
@@ -200,6 +202,8 @@ const CSS = `
   display: flex;
   align-items: flex-start;
   gap: 12px;
+  /* The padding is inside the width, so a row is never wider than the list it sits in */
+  box-sizing: border-box;
   width: 100%;
   padding: 7px 8px;
   font: inherit;
@@ -246,8 +250,7 @@ button.op-log-row:focus-visible { outline: 1px dotted var(--op-field-ink); outli
 .op-log-del { color: #e5484d; }
 
 /* The Issues tab: every open issue, as a board */
-.op-issues { display: flex; flex-direction: column; min-height: 0; }
-/* The board itself: a darker bed for the columns, so the cards read as sitting on it */
+.op-issues { display: flex; flex-direction: column; flex: 1; min-height: 0; }/* The board itself: a darker bed for the columns, so the cards read as sitting on it */
 .op-issues-columns { background: rgba(0, 0, 0, 0.28); }
 .op-issues-repos {
   display: flex;
@@ -273,10 +276,15 @@ button.op-log-row:focus-visible { outline: 1px dotted var(--op-field-ink); outli
 .op-issues-repo-count { color: #9fb3c6; font-variant-numeric: tabular-nums; }
 .op-issues-problems { padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,0.08); }
 .op-issues-problem { color: #ff8a80; font-size: 11px; }
-.op-issues-body { overflow-y: auto; max-height: min(620px, calc(100vh - 300px)); }
-/* The columns are wide enough for their cards to sit side by side, and the board scrolls across */
-.op-issues-columns { display: grid; grid-template-columns: repeat(5, minmax(260px, 1fr)); gap: 8px; padding: 8px; align-items: start; }
-/* Each column sits on a bed of its own colour, so the board reads as a board */
+.op-issues-body { flex: 1; min-height: 0; overflow-y: auto; }
+/* The columns are wide enough for their cards to sit side by side, and the board scrolls across.
+   The tracks are auto-sized, so a column with nothing in it collapses to its header and the
+   columns with work in them share what's left. */
+.op-issues-columns { display: grid; grid-template-columns: repeat(5, auto); gap: 8px; padding: 8px; align-items: start; }
+/* A column with nothing in it keeps only its header's width */
+.op-issues-column[data-empty="true"] { width: 88px; }
+/* A column with issues in it takes a fair share of what's left, but never less than a card's width */
+.op-issues-column:not([data-empty="true"]) { min-width: 200px; }/* Each column sits on a bed of its own colour, so the board reads as a board */
 .op-issues-column { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 0 4px 6px; background: rgba(255, 255, 255, 0.035); border-radius: 3px; }
 /* The title floats as the column scrolls, so the stage is always named */
 .op-issues-column-title {
@@ -387,6 +395,7 @@ button.op-log-row:focus-visible { outline: 1px dotted var(--op-field-ink); outli
   .op-log-meta { width: 110px; }
   .op-log-hash { width: 64px; }
   .op-issues-columns { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
+  .op-issues-column[data-empty="true"] { width: auto; }
 }
 .op-toasts {
   position: absolute;
@@ -463,6 +472,8 @@ button.op-log-row:focus-visible { outline: 1px dotted var(--op-field-ink); outli
 .op-timeline-empty { fill: var(--op-lo); }
 .op-timeline-bar[data-hovered] { fill: #c8ffd4; }
 .op-timeline-empty[data-hovered] { fill: var(--op-hi); }
+/* The commits, as a red line over the issues-done bars */
+.op-timeline-line { stroke: #e5484d; stroke-linejoin: round; stroke-linecap: round; }
 .op-timeline-total { min-width: 2ch; text-align: right; font-weight: 600; }
 .op-timeline-tip {
   position: absolute;
@@ -500,6 +511,9 @@ button.op-log-row:focus-visible { outline: 1px dotted var(--op-field-ink); outli
   padding: 6px;
   border-top: 2px solid var(--op-hi);
 }
+/* A panel takes the room left in the window, so its list fills the height like the Agents one does */
+.op-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.op-panel[hidden] { display: none; }
 .op-viewport {
   border: 2px solid;
   border-color: var(--op-lo) var(--op-hi) var(--op-hi) var(--op-lo);
@@ -549,6 +563,9 @@ button.op-log-row:focus-visible { outline: 1px dotted var(--op-field-ink); outli
 .op-stats { display: grid; gap: 8px; }
 .op-stats-top { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
 .op-segment { display: flex; gap: 2px; }
+/* The panel fills the window: the toolbar keeps its size and the list takes what's left */
+.op-panel > .op-stats { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
+.op-panel > .op-stats > .op-log { flex: 1; min-height: 0; }
 .op-stats-totals { display: flex; flex-wrap: wrap; gap: 6px; }
 .op-readout {
   display: grid;
@@ -569,6 +586,11 @@ button.op-log-row:focus-visible { outline: 1px dotted var(--op-field-ink); outli
   color: var(--op-field-ink);
   font-size: 13px;
 }
+/* The Activity list: the toolbar keeps its size and the rows take what's left */
+.op-list.op-log { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow-x: hidden; }
+/* The Agents list does the same, so its rows fill the window too */
+.op-panel > .op-stats > .op-list { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.op-panel > .op-stats > .op-list > .op-list-body { flex: 1; min-height: 0; max-height: none; }
 .op-list-row {
   display: grid;
   grid-template-columns: minmax(170px, 1.6fr) minmax(64px, 0.3fr) minmax(112px, 0.6fr) minmax(120px, 0.8fr) minmax(76px, 0.6fr) minmax(118px, 0.6fr) minmax(120px, 1.2fr) minmax(70px, 0.6fr);

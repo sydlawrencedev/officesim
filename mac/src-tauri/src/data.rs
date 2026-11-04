@@ -144,6 +144,15 @@ pub fn act(key: &str, params: &Value) -> Result<Value, String> {
                 "url": format!("https://github.com/{repo}/issues/{number}"),
             }))
         }
+        // Read GitHub again now, rather than waiting for the two-minute sync.
+        //
+        // The Issues tab's refresh button asks for this: the answers are kept for a couple of
+        // minutes, and someone who has just changed something on GitHub wants to see it now.
+        "refresh-github" => {
+            crate::github::forget_all();
+            crate::work::forget();
+            Ok(json!({ "refreshed": true }))
+        }
         _ => Err(format!("{key} isn't available in OfficeSim for Mac yet")),
     }
 }

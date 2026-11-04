@@ -152,7 +152,9 @@ const CSS = `
   border-color: var(--op-lo) var(--op-hi) var(--op-hi) var(--op-lo);
 }
 .op-window-main { position: relative; }
-.op-log { display: flex; flex-direction: column; }
+.op-log { display: flex; flex-direction: column; overflow-x: hidden; }
+/* The rule under the Activity buttons: green for the issues list, blue for the git list */
+.op-log-rule { height: 2px; flex-shrink: 0; }
 .op-log-toolbar {
   display: flex;
   align-items: center;
@@ -219,9 +221,10 @@ button.op-log-row:focus-visible { outline: 1px dotted var(--op-field-ink); outli
 .op-log-id { flex-shrink: 0; color: #9fb3c6; }
 .op-log-title { font-weight: 600; color: #f4f1e4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .op-log-note { color: #9fb3c6; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.op-log-meta { flex-shrink: 0; display: grid; justify-items: end; gap: 1px; width: 170px; text-align: right; }
+.op-log-meta { flex-shrink: 0; display: grid; justify-items: end; gap: 1px; width: 170px; max-width: 40%; text-align: right; overflow: hidden; }
 .op-log-who { color: #f4f1e4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .op-log-dim { color: #7d8fa3; font-size: 11px; }
+.op-log-note-dim { color: #7d8fa3; font-size: 11px; }
 .op-log-commit { align-items: center; }
 .op-log-clean { color: #6ee36e; }
 .op-log-overview { display: grid; gap: 8px; padding: 8px 8px 10px; font-size: 12px; border-bottom: 1px solid rgba(255,255,255,0.05); }
@@ -237,11 +240,15 @@ button.op-log-row:focus-visible { outline: 1px dotted var(--op-field-ink); outli
 .op-log-path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .op-log-hash { flex-shrink: 0; width: 80px; color: #f5d547; }
 .op-log-lines { flex-shrink: 0; min-width: 90px; text-align: right; font-variant-numeric: tabular-nums; }
+.op-log-meta > span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.op-log-meta .op-log-lines { min-width: 0; width: 100%; }
 .op-log-add { color: #6ee36e; }
 .op-log-del { color: #e5484d; }
 
 /* The Issues tab: every open issue, as a board */
 .op-issues { display: flex; flex-direction: column; min-height: 0; }
+/* The board itself: a darker bed for the columns, so the cards read as sitting on it */
+.op-issues-columns { background: rgba(0, 0, 0, 0.28); }
 .op-issues-repos {
   display: flex;
   flex-wrap: wrap;
@@ -269,8 +276,13 @@ button.op-log-row:focus-visible { outline: 1px dotted var(--op-field-ink); outli
 .op-issues-body { overflow-y: auto; max-height: min(620px, calc(100vh - 300px)); }
 /* The columns are wide enough for their cards to sit side by side, and the board scrolls across */
 .op-issues-columns { display: grid; grid-template-columns: repeat(5, minmax(260px, 1fr)); gap: 8px; padding: 8px; align-items: start; }
-.op-issues-column { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+/* Each column sits on a bed of its own colour, so the board reads as a board */
+.op-issues-column { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 0 4px 6px; background: rgba(255, 255, 255, 0.035); border-radius: 3px; }
+/* The title floats as the column scrolls, so the stage is always named */
 .op-issues-column-title {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -280,8 +292,9 @@ button.op-log-row:focus-visible { outline: 1px dotted var(--op-field-ink); outli
   font-size: 12px;
   font-weight: 700;
   color: #f4f1e4;
-  background: var(--op-field);
+  background: #16202a;
   border-top: 3px solid #9aa0a6;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 /* The cards sit side by side within a column, as many as fit */
 .op-issues-cards { display: grid; gap: 6px; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); align-items: start; }

@@ -9,6 +9,24 @@ use serde_json::{json, Value};
 /// The UI reads logs in chunks of a few hundred KB; more than this in one go is a mistake.
 const MAX_LOG_READ: u64 = 4 * 1024 * 1024;
 
+/// Reads what the slow panels need, so it's ready before anyone clicks on them.
+///
+/// Reading GitHub takes a second or so, which is long enough to feel slow when you click a tab.
+/// Doing it while the office is opening means the tab has its numbers straight away.
+pub fn warm_up() {
+    let repos = crate::github::tracked_repos();
+    if repos.is_empty() {
+        return;
+    }
+    // The open issues, the closed ones and the pull requests, all side by side
+    let _ = crate::github::issues_for_repos(&repos, "open");
+    let _ = crate::github::issues_for_repos(&repos, "closed");
+    // The work in progress: which issues are being worked on
+    let _ = crate::work::look();
+    // The git activity of every folder
+    let _ = crate::git_activity::git_commits();
+}
+
 pub fn get(key: &str, params: &Value) -> Result<Value, String> {
     let range = params.get("range").and_then(Value::as_str).unwrap_or("7d");
     Ok(match key {
@@ -138,6 +156,30 @@ mod tests {
     fn every_ui_key_answers() {
         for key in ["camera-room", "character-settings", "agent-stats", "game-high-scores", "scorecard", "kanban-board", "issues-board", "issues-done", "done-tasks", "git-log", "git-activity", "wall-charts", "logins", "attention", "harnesses"] {
             assert!(get(key, &json!({})).is_ok(), "{key}");
+        }
+    }
+
+    /// `cargo test -- --ignored --nocapture` prints the toolbar's Done count.
+    #[test]
+    #[ignore]
+    fn prints_this_macs_done() {
+        let done = get("issues-done", &json!({})).unwrap();
+        println!("done total: {}", done["total"]);
+        println!("done windows: {}", done["windows"]);
+        println!("done recent: {}", done["recent"].as_array().unwrap().len());
+    }
+
+    /// `cargo test -- --ignored --nocapture` prints the boardroom's own kanban board.
+    #[test]
+    #[ignore]
+    fn prints_this_macs_kanban() {
+        let board = get("kanban-board", &json!({})).unwrap();
+        for column in board["columns"].as_array().unwrap() {
+            let issues = column["issues"].as_array().unwrap();
+            println!("  {}: {}", column["status"], issues.len());
+            for issue in issues.iter().take(2) {
+                println!("      {} working={}", issue["identifier"], issue["workingAgent"]);
+            }
         }
     }
 

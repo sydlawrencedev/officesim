@@ -141,3 +141,18 @@ export function priorityRank(priority: string): number {
       return 3;
   }
 }
+
+/**
+ * A colour for a repo, so each one keeps the same colour wherever it appears.
+ *
+ * The hue comes from the repo's name, so it's the same every time and doesn't need storing.
+ */
+export function repoColor(repo: string): string {
+  let hash = 0;
+  for (let i = 0; i < repo.length; i += 1) {
+    hash = (hash * 31 + repo.charCodeAt(i)) | 0;
+  }
+  // A spread of hues that all read well on the dark background
+  const hue = Math.abs(hash) % 360;
+  return `hsl(${hue} 62% 62%)`;
+}

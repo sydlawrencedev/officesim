@@ -21,9 +21,9 @@ pub fn issues_board() -> Value {
     // What the office knows about the work in progress, so an issue an agent is on is in progress
     let work = crate::work::look();
 
-    // GitHub: the issues of every repo an agent works in.
-    for repo in repos() {
-        match github::issues(&repo) {
+    // GitHub: the issues of every repo an agent works in, each repo asked for side by side.
+    for (repo, answer) in github::issues_for_repos(&repos(), "open") {
+        match answer {
             Ok(repo_issues) => {
                 for issue in repo_issues {
                     issues.push(github_issue(&issue, &work));

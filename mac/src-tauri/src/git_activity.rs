@@ -32,13 +32,21 @@ pub fn git_activity() -> Value {
 pub fn git_commits() -> Value {
     let mut commits: Vec<Value> = Vec::new();
     let mut problems: Vec<Value> = Vec::new();
+    // Each folder is read side by side, so the wait is one repo's read rather than all of them
+    let mut handles = Vec::new();
     for folder in folders() {
         let name = folder
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_else(|| folder.to_string_lossy().into_owned());
-        let repo = crate::github::repo_slug(&folder).unwrap_or_else(|| name.clone());
-        let activity = repo_activity(&folder, &name);
+        handles.push(std::thread::spawn(move || {
+            let repo = crate::github::repo_slug(&folder).unwrap_or_else(|| name.clone());
+            let activity = repo_activity(&folder, &name);
+            (repo, activity)
+        }));
+    }
+    for handle in handles {
+        let Ok((repo, activity)) = handle.join() else { continue };
         if let Some(problem) = activity.get("problem").and_then(Value::as_str) {
             problems.push(json!({ "repo": repo, "problem": problem }));
             continue;
@@ -48,7 +56,7 @@ pub fn git_commits() -> Value {
             let mut commit = commit.clone();
             if let Some(object) = commit.as_object_mut() {
                 object.insert("repo".to_owned(), json!(repo));
-                object.insert("repoName".to_owned(), json!(name));
+                object.insert("repoName".to_owned(), json!(activity.get("name").and_then(Value::as_str).unwrap_or_default()));
                 object.insert("branch".to_owned(), json!(branch));
             }
             commits.push(commit);

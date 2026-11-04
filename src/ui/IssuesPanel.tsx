@@ -5,6 +5,7 @@ import {
   BOARD_STATUS_LABELS,
   BOARD_STATUSES,
   priorityRank,
+  repoColor,
   type BoardIssue,
   type IssuesBoard,
 } from "../issuesBoard.js";
@@ -130,7 +131,7 @@ export function IssuesPanel({
               onClick={() => setRepo(repo === entry.repo ? null : entry.repo)}
               title={`${entry.open} open issue${entry.open === 1 ? "" : "s"}`}
             >
-              {entry.repo}
+              <span style={{ color: repoColor(entry.repo) }}>{entry.repo}</span>
               <span className="op-issues-repo-count">{entry.open}</span>
             </button>
           ))}
@@ -165,7 +166,7 @@ export function IssuesPanel({
             .filter((entry) => entry.issues.length > 0)
             .map((entry) => (
               <section key={entry.repo} className="op-issues-group">
-                <h3 className="op-issues-group-title">
+                <h3 className="op-issues-group-title" style={{ color: repoColor(entry.repo) }}>
                   {entry.repo}
                   <span className="op-log-count">{entry.issues.length} open</span>
                 </h3>
@@ -181,23 +182,28 @@ export function IssuesPanel({
         </div>
       ) : (
         <div className="op-issues-body op-issues-columns">
-          {columns.map((column) => (
-            <section key={column.status} className="op-issues-column">
-              <h3
-                className="op-issues-column-title"
-                style={{ borderTopColor: BOARD_STATUS_COLORS[column.status] ?? "#9aa0a6" }}
+          {columns.map((column) => {
+            const color = BOARD_STATUS_COLORS[column.status] ?? "#9aa0a6";
+            return (
+              <section
+                key={column.status}
+                className="op-issues-column"
+                // The column is tinted with its stage's colour, so the board reads at a glance
+                style={{ background: `${color}14`, borderTopColor: color }}
               >
-                {BOARD_STATUS_LABELS[column.status] ?? column.status}
-                <span className="op-log-count">{column.issues.length}</span>
-              </h3>
-              <div className="op-issues-cards">
-                {column.issues.map((issue) => (
-                  <IssueCard key={issue.id} issue={issue} onOpen={onIssueClick} />
-                ))}
-                {column.issues.length === 0 ? <div className="op-issues-empty">—</div> : null}
-              </div>
-            </section>
-          ))}
+                <h3 className="op-issues-column-title" style={{ borderTopColor: color }}>
+                  {BOARD_STATUS_LABELS[column.status] ?? column.status}
+                  <span className="op-log-count">{column.issues.length}</span>
+                </h3>
+                <div className="op-issues-cards">
+                  {column.issues.map((issue) => (
+                    <IssueCard key={issue.id} issue={issue} onOpen={onIssueClick} />
+                  ))}
+                  {column.issues.length === 0 ? <div className="op-issues-empty">—</div> : null}
+                </div>
+              </section>
+            );
+          })}
         </div>
       )}
     </div>
@@ -218,7 +224,7 @@ function IssueCard({ issue, onOpen }: { issue: BoardIssue; onOpen: (issue: strin
           title={`${issue.priority} priority`}
         />
         {number ? <span className="op-log-id">#{number}</span> : null}
-        <span className="op-issues-repo-name" title={issue.repo}>
+        <span className="op-issues-repo-name" style={{ color: repoColor(issue.repo) }} title={issue.repo}>
           {issue.repo.split("/").pop()}
         </span>
       </div>

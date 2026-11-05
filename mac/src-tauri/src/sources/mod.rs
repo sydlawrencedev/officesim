@@ -172,10 +172,17 @@ pub fn forget_agents() {
 }
 
 /// Every active source's agents, with what each did since `since`.
+///
+/// The same rules as the office itself: an agent that has only just started isn't shown yet, and
+/// one working in a scratch directory isn't in a project, so it isn't shown either.
 pub fn agents_with_usage(since: i64) -> Vec<(Agent, Usage)> {
     let sources = active();
+    let now = crate::time::now_millis();
+    let cutoff = now - MIN_AGE.as_millis() as i64;
     agents_from(&sources)
         .into_iter()
+        .filter(|(_, agent)| agent.created_ms.is_none_or(|created| created <= cutoff))
+        .filter(|(_, agent)| in_a_project(agent))
         .map(|(source, agent)| {
             let usage = sources[source].usage(&agent, since);
             (agent, usage)

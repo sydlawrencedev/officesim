@@ -34,6 +34,13 @@ pub trait Source: Send + Sync {
     fn detect(&self) -> bool;
     /// The agents it has now.
     fn agents(&self) -> Vec<Agent>;
+    /// The folders it has worked in, not just the ones it is in now.
+    ///
+    /// A repo the agents used but aren't in today is still a repo you can add an issue to, and
+    /// still a repo the Activity tab should show.
+    fn past_folders(&self) -> Vec<PathBuf> {
+        Vec::new()
+    }
     /// Why it can't read its agents right now, if it can't.
     fn problem(&self) -> Option<String> {
         None
@@ -90,6 +97,23 @@ pub fn active() -> Vec<Box<dyn Source>> {
     detected().into_iter().filter(|source| settings::source_enabled(source.id())).collect()
 }
 
+/// Every folder the agents have worked in, now or in the past, each one once.
+///
+/// A repo the agents used but aren't in today is still a repo the office knows about, so its
+/// issues can be added to and its history shown.
+pub fn worked_folders() -> Vec<PathBuf> {
+    let mut folders: Vec<PathBuf> = Vec::new();
+    for source in active() {
+        for folder in source.past_folders() {
+            if folder.is_dir() && !folders.contains(&folder) {
+                folders.push(folder);
+            }
+        }
+    }
+    folders.sort();
+    folders
+}
+
 /// The last look at the agents, and when. The office, the menu bar and the Agents tab all ask
 /// within moments of each other, so a look is reused briefly.
 static LAST_LOOK: std::sync::Mutex<Option<(std::time::Instant, Vec<Agent>)>> = std::sync::Mutex::new(None);
@@ -107,11 +131,27 @@ pub fn agents() -> Vec<Agent> {
         }
     }
     let agents: Vec<Agent> = agents_from(&active()).into_iter().map(|(_, agent)| agent).collect();
-    let agents = old_enough(agents);
+    let agents: Vec<Agent> = old_enough(agents).into_iter().filter(|agent| in_a_project(agent)).collect();
     if let Ok(mut last) = LAST_LOOK.lock() {
         *last = Some((std::time::Instant::now(), agents.clone()));
     }
     agents
+}
+
+/// Whether an agent is working in a project, rather than in a scratch directory.
+///
+/// An agent running in a temporary directory isn't working on anything the office can show, and
+/// a dozen of them fill the office with noise.
+fn in_a_project(agent: &Agent) -> bool {
+    let Some(cwd) = agent.cwd.as_deref() else { return true };
+    let path = cwd.replace("/private/var/folders/", "/var/folders/");
+    !(path.starts_with("/tmp/")
+        || path.starts_with("/private/tmp/")
+        || path.contains("/T/tmp.")
+        || path.contains("/T/opencode")
+        || path.contains("/T/claude-")
+        || path.contains("/T/codex-")
+        || path.contains("/T/cursor-"))
 }
 
 /// Drops the agents that have only just started, so the office doesn't fill up with them.
@@ -309,6 +349,19 @@ mod tests {
     fn names(sources: Vec<Box<dyn Source>>) -> Vec<String> {
         let claims: Vec<(&'static str, Claims)> = sources.iter().map(|source| (source.id(), source.claims())).collect();
         agents_claimed_by(&sources, &claims).into_iter().map(|(_, agent)| agent.name).collect()
+    }
+
+    /// An agent working in a scratch directory isn't in a project, so it isn't in the office.
+    #[test]
+    fn an_agent_in_a_scratch_directory_is_not_in_the_office() {
+        let agent = |cwd: &str| Agent { id: cwd.into(), name: cwd.into(), source: "opencode", cwd: Some(cwd.into()), ..Agent::default() };
+        assert!(in_a_project(&agent("/Users/me/code/my-app")));
+        assert!(!in_a_project(&agent("/private/tmp/scout-demo")));
+        assert!(!in_a_project(&agent("/tmp/scratch")));
+        assert!(!in_a_project(&agent("/private/var/folders/56/T/tmp.abc123")));
+        assert!(!in_a_project(&agent("/private/var/folders/56/T/opencode")));
+        // An agent that doesn't say where it works is left alone
+        assert!(in_a_project(&Agent { name: "Mystery".into(), source: "opencode", ..Agent::default() }));
     }
 
     #[test]

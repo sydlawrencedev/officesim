@@ -51,13 +51,26 @@ struct Cached {
 
 static CACHE: Mutex<Option<HashMap<String, Cached>>> = Mutex::new(None);
 
-/// The GitHub repos the agents in the office work in, each one once.
+/// The GitHub repos the office knows about, each one once.
 ///
-/// These are the repos the Issues and Activity tabs show.
+/// These are the repos the Issues and Activity tabs show, and the ones an issue can be added to.
+/// A repo the agents have worked in but aren't in right now is still here: the office remembers
+/// the ones it has seen, so a repo doesn't disappear the moment the last agent leaves it.
 pub fn tracked_repos() -> Vec<String> {
     let mut repos: Vec<String> = Vec::new();
     for folder in tracked_folders() {
+        if is_temporary(&folder) {
+            continue;
+        }
         let Some(repo) = repo_slug(&folder) else { continue };
+        if !repos.contains(&repo) {
+            // Remember it, so it's still known after the agents leave
+            crate::settings::remember_repo(&repo);
+            repos.push(repo);
+        }
+    }
+    // The ones remembered from before, that no agent is in now
+    for repo in crate::settings::known_repos() {
         if !repos.contains(&repo) {
             repos.push(repo);
         }
@@ -65,7 +78,24 @@ pub fn tracked_repos() -> Vec<String> {
     repos
 }
 
+/// Whether a folder is a temporary one, so it isn't treated as a project to work in.
+///
+/// An agent running in a scratch directory isn't working in a repo, and a repo reached only
+/// through one isn't somewhere you'd add an issue.
+fn is_temporary(folder: &Path) -> bool {
+    let path = folder.to_string_lossy();
+    path.starts_with("/private/tmp/")
+        || path.starts_with("/tmp/")
+        || path.contains("/T/tmp.")
+        || path.contains("/T/opencode")
+        || path == "/private/tmp"
+        || path == "/tmp"
+}
+
 /// The folders the agents in the office work in, each one once.
+///
+/// This includes the folders they've worked in but aren't in now, so a repo the agents used
+/// yesterday is still known today.
 pub fn tracked_folders() -> Vec<PathBuf> {
     let mut folders: Vec<PathBuf> = Vec::new();
     for agent in crate::sources::agents() {
@@ -75,6 +105,11 @@ pub fn tracked_folders() -> Vec<PathBuf> {
             continue;
         }
         folders.push(folder);
+    }
+    for folder in crate::sources::worked_folders() {
+        if !folders.contains(&folder) {
+            folders.push(folder);
+        }
     }
     folders.sort();
     folders
@@ -379,6 +414,17 @@ mod tests {
     #[test]
     fn reads_the_owner_and_name_from_a_remote() {
         assert_eq!(repo_slug(Path::new("/nope")), None);
+    }
+
+    /// A scratch directory isn't a project, so a repo reached only through one isn't offered.
+    #[test]
+    fn a_scratch_directory_is_not_a_project() {
+        assert!(is_temporary(Path::new("/private/tmp/scout-demo")));
+        assert!(is_temporary(Path::new("/tmp/scratch")));
+        assert!(is_temporary(Path::new("/private/var/folders/56/abc/T/tmp.abc123")));
+        assert!(is_temporary(Path::new("/private/var/folders/56/abc/T/opencode")));
+        assert!(!is_temporary(Path::new("/Users/me/code/my-app")));
+        assert!(!is_temporary(Path::new("/Users/me/code/toolswanted.dev")));
     }
 
     /// A folder with a git remote pointing at GitHub names the repo.

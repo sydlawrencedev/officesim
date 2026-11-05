@@ -34,7 +34,15 @@ and keeps shipping; this app reuses its office UI and engine (`../src/ui`, `../s
 | Demo | nothing | Three made-up agents, when `OFFICESIM_DEMO=1` |
 
 Agents are named after their project ("Agent Pixels"; Paperclip agents by their own name),
-numbered oldest first when a project has several sessions. The harness shows as its favicon before
+numbered oldest first when a project has several sessions. An OpenCode session also carries its
+own name, so two sessions in one project can be told apart ("Agents Hidden Eagle", "Agents Crisp
+Wizard") rather than being just "Agents 2" and "Agents 3".
+
+An agent that started less than a minute ago isn't shown yet: it has barely begun, so seeing it in
+the office is just noise. An agent working in a scratch directory isn't in a project, so it isn't
+in the office either — a dozen of them fill it with noise.
+
+The harness shows as its favicon before
 the name (`src/host/icons`, from claude.ai, opencode.ai, gemini.google.com and Paperclip's local
 server), on the canvas, in the tooltip and in the Agents tab. The thread or issue shows in the tooltip.
 
@@ -109,7 +117,10 @@ The boardroom's own kanban on the wall uses the same rule, so an issue an agent 
 On the Mac the issues come from GitHub, read with `gh`. Clicking one opens it on GitHub. The
 Paperclip plugin's own board shows that company's issues instead.
 
-**+ New issue** opens a form that adds an issue to any of the repos, on GitHub.
+**+ New issue** opens a form that adds an issue to any of the repos, on GitHub. The list is every
+repo the office knows about, not just the ones with something open: a repo the agents worked in
+last week is still one you can add an issue to. A repo reached only through a scratch directory
+isn't a project, so it isn't in the list.
 
 **Refresh** reads GitHub again straight away, rather than waiting for the two-minute sync.
 

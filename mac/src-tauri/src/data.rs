@@ -168,6 +168,34 @@ mod tests {
         }
     }
 
+    /// `cargo test -- --ignored --nocapture` prints the repos an issue can be made in.
+    #[test]
+    #[ignore]
+    fn prints_the_issue_repos() {
+        let board = get("issues-board", &json!({})).unwrap();
+        for repo in board["repos"].as_array().unwrap() {
+            println!("  {} ({} open)", repo["repo"], repo["open"]);
+        }
+    }
+
+    /// `cargo test -- --ignored --nocapture` prints the agents in the office, and where each is.
+    #[test]
+    #[ignore]
+    fn prints_the_office_agents() {
+        for agent in crate::sources::agents() {
+            println!(
+                "  {} | {} | {} | {:?}",
+                agent.name,
+                agent.source,
+                agent.status,
+                agent.cwd
+            );
+        }
+    }
+
+
+
+
     /// `cargo test -- --ignored --nocapture` reads GitHub again now.
     #[test]
     #[ignore]

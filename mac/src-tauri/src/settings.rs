@@ -14,6 +14,13 @@ struct Settings {
     /// Notify when an agent starts waiting on the person (on unless turned off).
     #[serde(default)]
     quiet: bool,
+    /// The GitHub repos the office has seen an agent, an issue or any activity in.
+    ///
+    /// Remembered because the office only knows about a repo while an agent is in it, and a repo
+    /// the agents have worked in but aren't in right now should still be one you can add an issue
+    /// to.
+    #[serde(default)]
+    known_repos: Vec<String>,
 }
 
 fn path() -> PathBuf {
@@ -47,6 +54,23 @@ pub fn notify_waiting() -> bool {
 
 pub fn set_notify_waiting(notify: bool) -> Result<(), String> {
     update(|settings| settings.quiet = !notify)
+}
+
+/// The GitHub repos the office has seen, so they stay available even when no agent is in them.
+pub fn known_repos() -> Vec<String> {
+    settings().lock().map(|settings| settings.known_repos.clone()).unwrap_or_default()
+}
+
+/// Remembers a GitHub repo, so it's still known after the agents leave it.
+pub fn remember_repo(repo: &str) {
+    if repo.is_empty() {
+        return;
+    }
+    let _ = update(|settings| {
+        if !settings.known_repos.iter().any(|known| known == repo) {
+            settings.known_repos.push(repo.to_owned());
+        }
+    });
 }
 
 /// Changes the settings and saves them.

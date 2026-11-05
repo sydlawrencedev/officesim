@@ -11,7 +11,7 @@
 //! parent's work). A session is working while its latest reply hasn't completed, as long as an
 //! OpenCode process is running and the session was written to recently.
 
-use super::naming::{number_namesakes, project_name, question_text, tidy};
+use super::naming::{number_namesakes, project_name, question_text, tidy, title_case};
 use super::Source;
 use crate::model::{ActivityKind, Agent, LastRun, Usage};
 use crate::time::{iso_from_millis, now_millis};
@@ -74,6 +74,9 @@ impl OpenCode {
     fn read_agents_v2(&self, conn: &Connection) -> rusqlite::Result<Vec<Agent>> {
         let now = now_millis();
         let running = opencode_running();
+        // The session's own name is in the current schema only, and not in every version of it,
+        // so it's read separately and left out when there's no such column.
+        let has_slug = has_column(conn, "session_v2", "slug");
         let mut statement = conn.prepare(
             "SELECT s.id, s.directory, s.title, s.time_created, s.time_updated,
                     (SELECT m.data FROM session_message m WHERE m.session_id = s.id ORDER BY m.time_created DESC, m.id DESC LIMIT 1),
@@ -83,6 +86,16 @@ impl OpenCode {
              WHERE s.parent_id IS NULL AND s.time_archived IS NULL AND s.time_updated >= ?1
              ORDER BY s.time_created",
         )?;
+        let slugs: std::collections::HashMap<String, String> = if has_slug {
+            let mut query = conn.prepare("SELECT id, slug FROM session_v2 WHERE slug IS NOT NULL")?;
+            let slugs = query
+                .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?
+                .flatten()
+                .collect();
+            slugs
+        } else {
+            std::collections::HashMap::new()
+        };
         let rows = statement.query_map(params![now - RECENT_MILLIS], |row| {
             Ok(SessionRow {
                 id: row.get(0)?,
@@ -96,11 +109,15 @@ impl OpenCode {
                 // OpenCode's own answer to "is this session working right now?"
                 busy_at: row.get(8)?,
                 idle_at: row.get(9)?,
+                // The session's own name, read separately (see above)
+                slug: None,
                 v2: true,
             })
         })?;
         let mut agents = Vec::new();
         for session in rows.flatten() {
+            let mut session = session;
+            session.slug = slugs.get(&session.id).cloned();
             agents.push(self.agent_from(&conn, &session, running, now));
         }
         number_namesakes(&mut agents);
@@ -134,6 +151,7 @@ impl OpenCode {
                 model: row.get(7)?,
                 busy_at: None,
                 idle_at: None,
+                slug: None,
                 v2: false,
             })
         })?;
@@ -157,7 +175,7 @@ impl OpenCode {
         let waiting_on = (running && session.replying()).then(|| open_question(conn, &session.id, session.v2)).flatten();
         Agent {
             id: format!("opencode:{}", session.id),
-            name: project_name(HARNESS_NAME, Some(&session.directory)),
+            name: opencode_name(HARNESS_NAME, &session.directory, session.slug.as_deref()),
             status: status.into(),
             activity_kind: if working { ActivityKind::Coding } else { ActivityKind::Idle },
             last_run: Some(LastRun {
@@ -364,6 +382,27 @@ impl Source for OpenCode {
         self.read_agents().unwrap_or_default()
     }
 
+    /// The folders its sessions have worked in, not just the ones they're in now.
+    ///
+    /// A session's directory is where the agent worked, and it stays in the database after the
+    /// session ends, so this is how the office knows about a repo nobody is in right now.
+    fn past_folders(&self) -> Vec<PathBuf> {
+        let Ok(conn) = self.open() else { return Vec::new() };
+        let table = if has_table(&conn, "session_v2") { "session_v2" } else { "session" };
+        let Ok(mut statement) = conn.prepare(&format!("SELECT DISTINCT directory FROM {table} WHERE directory IS NOT NULL")) else {
+            return Vec::new();
+        };
+        let folders = statement
+            .query_map([], |row| row.get::<_, String>(0))
+            .ok()
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter_map(|directory| PathBuf::from(directory).canonicalize().ok())
+            .collect();
+        folders
+    }
+
     fn problem(&self) -> Option<String> {
         self.read_agents().err().map(|error| format!("Can't read OpenCode's database: {error}"))
     }
@@ -400,6 +439,8 @@ struct SessionRow {
     /// The role of the latest message: "user" or "assistant" (a column in the current schema,
     /// in the message's JSON in the older one).
     last_role: Option<String>,
+    /// The session's own name, like "hidden-eagle" (the current schema only).
+    slug: Option<String>,
     /// The model of the latest reply.
     model: Option<String>,
     /// When the session last turned busy, in the current schema.
@@ -462,6 +503,13 @@ fn message_error(message: &Value) -> Option<String> {
 fn has_table(conn: &Connection, name: &str) -> bool {
     conn.query_row("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1", params![name], |_| Ok(()))
         .is_ok()
+}
+
+/// Whether a table has a column, so a query can leave it out when it isn't there.
+fn has_column(conn: &Connection, table: &str, column: &str) -> bool {
+    // The table's name can't be a bound parameter here, and it comes from our own code
+    let query = format!("SELECT 1 FROM pragma_table_info('{table}') WHERE name = '{column}'");
+    conn.query_row(&query, [], |_| Ok(())).is_ok()
 }
 
 /// The model a session runs on, from the session row's JSON (`{"id":..., "providerID":...}`).
@@ -571,6 +619,19 @@ fn session_title(title: &str) -> Option<String> {
     (!title.is_empty() && !title.starts_with("New session")).then(|| title.to_owned())
 }
 
+/// A session's name, so two sessions in the same project can be told apart.
+///
+/// The project on its own isn't enough: six sessions in one repo are all called "Agents", and
+/// then they're numbered ("Agents 2", "Agents 3"), which says nothing about which is which. The
+/// session's own name — "hidden-eagle" — does, so it goes in the name too.
+fn opencode_name(harness: &str, directory: &str, slug: Option<&str>) -> String {
+    let project = project_name(harness, Some(directory));
+    match slug.map(str::trim).filter(|slug| !slug.is_empty()) {
+        Some(slug) => format!("{project} {}", title_case(slug)),
+        None => project,
+    }
+}
+
 /// Whether any OpenCode process is running; without one, no reply is in progress.
 fn opencode_running() -> bool {
     Command::new("/usr/bin/pgrep").args(["-x", "opencode"]).output().is_ok_and(|output| output.status.success())
@@ -579,6 +640,16 @@ fn opencode_running() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Two sessions in the same project are told apart by their own names.
+    #[test]
+    fn a_session_is_named_after_its_project_and_its_own_name() {
+        assert_eq!(opencode_name("Opencode", "/Users/me/code/my-app", Some("hidden-eagle")), "My App Hidden Eagle");
+        // With no name of its own, the project on its own
+        assert_eq!(opencode_name("Opencode", "/Users/me/code/my-app", None), "My App");
+        // And a blank name is no name
+        assert_eq!(opencode_name("Opencode", "/Users/me/code/my-app", Some("  ")), "My App");
+    }
 
     fn fixture(name: &str) -> (PathBuf, OpenCode) {
         let path = std::env::temp_dir().join(format!("officesim-opencode-{name}-{}.db", std::process::id()));
@@ -858,6 +929,7 @@ mod tests {
             updated: now,
             last_message: None,
             last_role: Some("assistant".to_owned()),
+            slug: Some("quiet-river".to_owned()),
             model: None,
             busy_at: Some(now - 5_000),
             idle_at: Some(now - 60_000),

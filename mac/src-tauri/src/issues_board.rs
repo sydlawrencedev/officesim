@@ -55,6 +55,13 @@ pub fn issues_board() -> Value {
             None => repos.push((repo, 1)),
         }
     }
+    // The repos with no open issues are still repos you can add an issue to, so they're here
+    // too, with nothing open in them.
+    for repo in github::tracked_repos() {
+        if !repos.iter().any(|(name, _)| *name == repo) {
+            repos.push((repo, 0));
+        }
+    }
     repos.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
 
     let columns: Vec<Value> = BOARD_STATUSES

@@ -141,7 +141,9 @@ pub fn done_tasks() -> Value {
 struct PaperclipTasks(Paperclip);
 
 const KANBAN_SQL: &str = "
-  SELECT i.id::text, i.identifier, i.title, i.status, i.priority, w.name, assignee.name, (i.assignee_user_id IS NOT NULL)
+  SELECT i.id::text, i.identifier, i.title, i.status, i.priority, w.name, assignee.name, (i.assignee_user_id IS NOT NULL),
+         (extract(epoch FROM i.created_at) * 1000)::int8, (extract(epoch FROM i.updated_at) * 1000)::int8, c.name,
+         (SELECT count(*) FROM public.issue_comments ic WHERE ic.issue_id = i.id AND ic.deleted_at IS NULL)::int8
   FROM public.issues i
   JOIN public.companies c ON c.id = i.company_id AND c.status = 'active'
   LEFT JOIN public.agents assignee ON assignee.id = i.assignee_agent_id
@@ -234,6 +236,11 @@ impl TaskSource for PaperclipTasks {
                     "workingAgent": row.get::<_, Option<String>>(5),
                     "assigneeAgent": row.get::<_, Option<String>>(6),
                     "assignedToUser": row.get::<_, bool>(7),
+                    // What the Issues tab shows about it beyond the title
+                    "createdAt": row.get::<_, Option<i64>>(8).map(iso_from_millis),
+                    "updatedAt": row.get::<_, Option<i64>>(9).map(iso_from_millis),
+                    "company": row.get::<_, Option<String>>(10),
+                    "comments": row.get::<_, i64>(11),
                 });
                 (row.get(3), issue)
             })
@@ -386,7 +393,10 @@ impl TaskSource for GitHubTasks {
 }
 
 /// The GitHub repos the agents' folders are, each one once.
-fn active_repos() -> Vec<String> {
+///
+/// The boardroom's own kanban reads these. The Issues tab reads the same list, so the two
+/// boards show the same issues; the test in issues_board.rs keeps them agreeing.
+pub(crate) fn active_repos() -> Vec<String> {
     crate::github::tracked_repos()
 }
 

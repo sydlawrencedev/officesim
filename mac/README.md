@@ -114,6 +114,11 @@ on, so:
 The boardroom's own kanban on the wall uses the same rule, so an issue an agent is on isn't in
 "to do" there either.
 
+The board and the wall board read the same repos, so they show the same issues. The repos are
+every one the office knows about: the ones the agents work in now, the ones they worked in
+before, and the ones remembered from earlier. A repo nobody is in right now still has open
+issues, and they still show here.
+
 On the Mac the issues come from GitHub, read with `gh`. Clicking one opens it on GitHub. The
 Paperclip plugin's own board shows that company's issues instead.
 

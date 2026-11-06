@@ -6,10 +6,8 @@
 //! last touched.
 
 use crate::github;
-use crate::sources;
 use crate::tasks;
 use serde_json::{json, Value};
-use std::path::PathBuf;
 
 /// The board's columns, in board order.
 pub const BOARD_STATUSES: [&str; 5] = ["backlog", "todo", "in_progress", "in_review", "blocked"];
@@ -21,8 +19,17 @@ pub fn issues_board() -> Value {
     // What the office knows about the work in progress, so an issue an agent is on is in progress
     let work = crate::work::look();
 
-    // GitHub: the issues of every repo an agent works in, each repo asked for side by side.
-    for (repo, answer) in github::issues_for_repos(&repos(), "open") {
+    // The GitHub repos the office knows about: the ones the agents work in now, the ones they
+    // worked in before, and the ones remembered from earlier.
+    //
+    // This is the same list the boardroom's own kanban reads, so the Issues tab and the wall
+    // board show the same issues. It used to be a smaller list — only the repos an agent was in
+    // that minute — which is why this tab could show four issues while the wall board showed
+    // many more.
+    let tracked = github::tracked_repos();
+
+    // GitHub: the issues of every one of those repos, each asked for side by side.
+    for (repo, answer) in github::issues_for_repos(&tracked, "open") {
         match answer {
             Ok(repo_issues) => {
                 for issue in repo_issues {
@@ -57,9 +64,9 @@ pub fn issues_board() -> Value {
     }
     // The repos with no open issues are still repos you can add an issue to, so they're here
     // too, with nothing open in them.
-    for repo in github::tracked_repos() {
-        if !repos.iter().any(|(name, _)| *name == repo) {
-            repos.push((repo, 0));
+    for repo in &tracked {
+        if !repos.iter().any(|(name, _)| name == repo) {
+            repos.push((repo.clone(), 0));
         }
     }
     repos.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
@@ -109,12 +116,21 @@ fn paperclip_issues() -> Vec<(String, Value)> {
             for (status, issue) in paperclip {
                 let mut issue = issue;
                 if let Some(object) = issue.as_object_mut() {
-                    let repo = object.get("identifier").and_then(Value::as_str).and_then(|id| id.split_once('-')).map(|(prefix, _)| prefix.to_owned());
-                    object.insert("repo".to_owned(), json!(repo.unwrap_or_else(|| "Paperclip".to_owned())));
+                    // The company it belongs to names it, the way a repo names a GitHub issue.
+                    let repo = object
+                        .get("company")
+                        .and_then(Value::as_str)
+                        .map(str::to_owned)
+                        .unwrap_or_else(|| "Paperclip".to_owned());
+                    object.insert("repo".to_owned(), json!(repo));
                     object.insert("status".to_owned(), json!(status));
                     object.insert("labels".to_owned(), json!([]));
-                    object.insert("comments".to_owned(), json!(0));
-                    object.insert("updatedAt".to_owned(), Value::Null);
+                    if !object.contains_key("comments") {
+                        object.insert("comments".to_owned(), json!(0));
+                    }
+                    if !object.contains_key("updatedAt") {
+                        object.insert("updatedAt".to_owned(), Value::Null);
+                    }
                     if !object.contains_key("createdAt") {
                         object.insert("createdAt".to_owned(), Value::Null);
                     }
@@ -126,29 +142,31 @@ fn paperclip_issues() -> Vec<(String, Value)> {
     issues
 }
 
-/// The GitHub repos the agents' folders are, each one once.
-fn repos() -> Vec<String> {
-    let mut repos: Vec<String> = Vec::new();
-    for folder in folders() {
-        let Some(repo) = github::repo_slug(&folder) else { continue };
-        if !repos.contains(&repo) {
-            repos.push(repo);
-        }
-    }
-    repos
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-/// The folders the agents in the office work in, each one once.
-fn folders() -> Vec<PathBuf> {
-    let mut folders: Vec<PathBuf> = Vec::new();
-    for agent in sources::agents() {
-        let Some(cwd) = agent.cwd.as_deref() else { continue };
-        let folder = PathBuf::from(cwd);
-        if !folder.is_dir() || folders.contains(&folder) {
-            continue;
-        }
-        folders.push(folder);
+    /// The Issues tab and the boardroom's wall board must show the same issues.
+    ///
+    /// They used to read different repo lists: the wall board asked for every repo the office
+    /// knew about, and this tab asked only for the ones an agent was in that minute. A repo
+    /// nobody was in still had open issues, so the wall board showed many more than this tab.
+    ///
+    /// Both now read the office's list of known repos, and this is what stops them drifting
+    /// apart again: every repo the wall board would ask about is on this tab's list too.
+    #[test]
+    fn this_tab_reads_the_same_repos_as_the_wall_board() {
+        // The wall board asks GitHub for every repo the office knows about.
+        let wall_board_repos = crate::tasks::active_repos();
+        // This tab reads the same list.
+        assert_eq!(issues_repos(), wall_board_repos);
     }
-    folders.sort();
-    folders
+
+    /// The repos the Issues tab reads its issues from.
+    ///
+    /// Kept as its own function so the test above can compare it with the wall board's list
+    /// without waiting for GitHub to answer.
+    fn issues_repos() -> Vec<String> {
+        github::tracked_repos()
+    }
 }

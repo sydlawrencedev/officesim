@@ -240,6 +240,52 @@ mod tests {
         }
     }
 
+    /// The Issues tab and the boardroom's wall board must show the same issues.
+    ///
+    /// They used to read different repo lists, so the wall board showed many more than the
+    /// Issues tab. This asks both of them, here on this Mac, and compares them.
+    #[test]
+    #[ignore]
+    fn prints_both_boards_side_by_side() {
+        let issues_tab = get("issues-board", &json!({})).unwrap();
+        let wall_board = get("kanban-board", &json!({})).unwrap();
+        let tab_total: usize = issues_tab["columns"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|column| column["issues"].as_array().unwrap().len())
+            .sum();
+        let wall_total: usize = wall_board["columns"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|column| column["issues"].as_array().unwrap().len())
+            .sum();
+        println!("Issues tab: {tab_total} issues");
+        println!("Wall board: {wall_total} issues");
+        println!("Issues tab repos: {}", issues_tab["repos"]);
+        println!("Wall board problems: {}", wall_board["columns"].as_array().unwrap().len());
+        // Every issue the wall board shows, the Issues tab shows too
+        let tab_ids: Vec<String> = issues_tab["columns"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|column| column["issues"].as_array().unwrap().iter())
+            .map(|issue| issue["identifier"].as_str().unwrap_or_default().to_owned())
+            .collect();
+        let wall_ids: Vec<String> = wall_board["columns"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|column| column["issues"].as_array().unwrap().iter())
+            .map(|issue| issue["identifier"].as_str().unwrap_or_default().to_owned())
+            .collect();
+        for id in &wall_ids {
+            assert!(tab_ids.contains(id), "the Issues tab is missing {id}");
+        }
+        println!("Every one of the wall board's issues is on the Issues tab.");
+    }
+
     /// `cargo test -- --ignored --nocapture` prints the Issues tab's board and the git activity.
     #[test]
     #[ignore]
